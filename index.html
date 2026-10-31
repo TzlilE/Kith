@@ -259,7 +259,7 @@ function getNeighborGraph(centerId,allNodes,allLinks){
   });
   // From home: hide persons/sub-cats that belong under a category
   const filteredNodes=centerId==="me"
-    ?allNodes.filter(n=>nIds.has(n.id)&&(n.id==="me"||!hasCatParent(n.id,allNodes,allLinks)))
+    ?allNodes.filter(n=>nIds.has(n.id))
     :allNodes.filter(n=>nIds.has(n.id)&&n.id!=="me");
   const filteredIds=new Set(filteredNodes.map(n=>n.id));
   return{neighborNodes:filteredNodes,neighborLinks:nLinks.filter(l=>filteredIds.has(l.source)&&filteredIds.has(l.target)),secondLevelIds:new Set()};
@@ -279,7 +279,7 @@ function getTwoLevelGraph(centerId,allNodes,allLinks){
   const all=new Set([...l1,...l2]);
   // From home: hide persons/sub-cats that belong under a category
   const filteredNodes=centerId==="me"
-    ?allNodes.filter(n=>all.has(n.id)&&(n.id==="me"||!hasCatParent(n.id,allNodes,allLinks)))
+    ?allNodes.filter(n=>all.has(n.id))
     :allNodes.filter(n=>all.has(n.id)&&n.id!=="me");
   const filteredIds=new Set(filteredNodes.map(n=>n.id));
   const filteredL2=new Set([...l2].filter(id=>filteredIds.has(id)));
