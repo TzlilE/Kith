@@ -283,7 +283,21 @@ function getTwoLevelGraph(centerId,allNodes,allLinks){
       else{l1.add(l.source);addLink(l);}
     }
   });
+  // Inside a category: only branch DOWNWARD (parent -> child), and never expand
+  // the node we came from (otherwise its other children would show up here)
+  const parents=new Set();
+  if(!isHome)allLinks.forEach(l=>{
+    if(l.target===centerId&&l.source!=="me"&&["category","collection"].includes(allNodes.find(n=>n.id===l.source)?.type))parents.add(l.source);
+  });
   allLinks.forEach(l=>{
+    if(!isHome){
+      if(l1.has(l.source)&&l.source!==centerId&&!parents.has(l.source)&&!l1.has(l.target)&&l.target!=="me"){
+        const pn=allNodes.find(n=>n.id===l.source),cn=allNodes.find(n=>n.id===l.target);
+        if(!cn||pn?.type==="person"&&cn.type==="person")return;
+        if(["category","collection"].includes(pn?.type)){l2.add(l.target);addLink(l);}
+      }
+      return;
+    }
     const inL1s=l1.has(l.source)&&l.source!==centerId;
     const inL1t=l1.has(l.target)&&l.target!==centerId;
     if(inL1s&&!l1.has(l.target)&&l.target!=="me"){
@@ -1525,7 +1539,7 @@ function MainApp(){
         centerId={centerId} allNodes={nodes} allLinks={links}
         onNodeTap={onNodeTap} onCenterTap={onCenterTap}
         width={graphWidth||dims.width} height={graphHeight||dims.height}
-        twoLevel={isHome} newNodeId={newNodeId} selectedId={activeCardId}
+        twoLevel={isHome||centerNode?.type==="category"||centerNode?.type==="collection"} newNodeId={newNodeId} selectedId={activeCardId}
         editMode={editMode} onEditNode={setEditSheetNode}
         stablePosRef={isHome?homePosRef:(centerId&&centerId!=="me"?(()=>{if(!catPosMapRef.current[centerId])catPosMapRef.current[centerId]={current:{}};return catPosMapRef.current[centerId];})():undefined)}
       />}
