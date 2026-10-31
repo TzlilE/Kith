@@ -161,6 +161,8 @@ function personBaseColor(nodeId, allLinks, allNodes) {
 function nodeMainColor(node, allLinks, allNodes) {
   if(node.id==="me") return P.youFill;
   if(node.type==="category") return categoryColorFor(node);
+  if(node.type==="collection") return node.color||"#BD9CE2";
+  if(node.type==="item") return collectionDef(node.collection)?.color||"#D9C3F4";
   return personBaseColor(node.id, allLinks, allNodes);
 }
 
@@ -169,6 +171,7 @@ function getNodeRadius(node, centerId, isL2, allLinks) {
   if(node.id===centerId) return 36;
   if(isL2) return 10;
   if(node.type==="category") return 26;
+  if(node.type==="collection") return node.id==="collections"?26:22;
   if(node.type!=="person") return 14;
   const connCount = allLinks ? allLinks.filter(l=>(l.source===node.id||l.target===node.id)&&l.type!=="circle").length : 0;
   const aboutCount = node.about ? node.about.length : 0;
@@ -480,7 +483,7 @@ function useAnimatedLayout(centerId,allNodes,allLinks,width,height,twoLevel,newN
 
 // ===== Graph =====
 function Avatar({node,r,color,isCenter,isSelected}){
-  const initial=node?.name?.[0]||"?";
+  const initial=node?.icon||node?.name?.[0]||"?";
   return(
     <g>
       <circle r={r+1} fill="transparent" style={{filter:`drop-shadow(0 2px 6px ${P.shadow})`}}/>
@@ -531,8 +534,8 @@ function Graph({centerId,allNodes,allLinks,onNodeTap,onCenterTap,width,height,tw
             onTouchEnd={e=>{e.preventDefault();e.stopPropagation();if(isCenter)onCenterTap(n);else onNodeTap(n);}}>
             {isSelected&&<circle r={r+7} fill={P.selectedLight} stroke={P.selected} strokeWidth={1.5}/>}
             <Avatar node={n} r={r} color={color} isCenter={isCenter} isSelected={isSelected}/>
-            {!isL2&&n.id!=="me"&&<text y={r+15} textAnchor="middle" fontSize={isCenter?13:10} fontWeight={isCenter?"700":"500"} fill={P.text} style={{pointerEvents:"none",userSelect:"none"}} paintOrder="stroke" stroke={P.bg} strokeWidth={3} strokeLinejoin="round">{n.name.split(" ")[0]}</text>}
-            {isL2&&<text y={r+11} textAnchor="middle" fontSize={8} fill={P.muted} style={{pointerEvents:"none",userSelect:"none"}} paintOrder="stroke" stroke={P.bg} strokeWidth={3} strokeLinejoin="round">{n.name.split(" ")[0]}</text>}
+            {!isL2&&n.id!=="me"&&<text y={r+15} textAnchor="middle" fontSize={isCenter?13:10} fontWeight={isCenter?"700":"500"} fill={P.text} style={{pointerEvents:"none",userSelect:"none"}} paintOrder="stroke" stroke={P.bg} strokeWidth={3} strokeLinejoin="round">{n.type==="item"?(n.name.length>16?n.name.slice(0,15)+"…":n.name):n.name.split(" ")[0]}</text>}
+            {isL2&&<text y={r+11} textAnchor="middle" fontSize={8} fill={P.muted} style={{pointerEvents:"none",userSelect:"none"}} paintOrder="stroke" stroke={P.bg} strokeWidth={3} strokeLinejoin="round">{n.type==="item"?(n.name.length>16?n.name.slice(0,15)+"…":n.name):n.name.split(" ")[0]}</text>}
           </g>
         );
       })}
@@ -614,6 +617,7 @@ function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpd
   const personCats=personCatLinks.map(l=>{const catId=l.source===person.id?l.target:l.source;return allNodes.find(n=>n.id===catId&&n.type==="category");}).filter(Boolean);
   const aboutSorted=[...(person.about||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const conns=allLinks.filter(l=>l.source===person.id||l.target===person.id).map(l=>{const oid=l.source===person.id?l.target:l.source;return{node:allNodes.find(n=>n.id===oid),type:l.type};}).filter(c=>c.node&&c.node.id!=="me"&&c.node.type==="person");
+  const linkedItems=allLinks.filter(l=>(l.source===person.id||l.target===person.id)&&l.type!=="item").map(l=>allNodes.find(n=>n.id===(l.source===person.id?l.target:l.source))).filter(n=>n&&n.type==="item");
   const personCF=fieldDefs.filter(f=>person.customValues?.[f.id]);
   const importantF=fieldDefs.filter(f=>(person.importantFieldIds||[]).includes(f.id)&&person.customValues?.[f.id]);
   const connMatches=connName.trim()&&!connMatchId?allNodes.filter(n=>n.type==="person"&&n.id!==person.id&&n.name.toLowerCase().includes(connName.toLowerCase())):[];
@@ -653,6 +657,7 @@ function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpd
         {aboutSorted.length===0&&<div style={{fontSize:13,color:P.dim,marginBottom:12}}>No entries yet</div>}
         {aboutSorted.map((e,i)=><div key={i} style={{display:"flex",gap:10,paddingBottom:10}}><div style={{width:7,height:7,borderRadius:"50%",background:pColor,marginTop:5,flexShrink:0,opacity:i===0?1:0.5}}/><div><div style={{fontSize:11,color:P.muted,marginBottom:2}}>{formatDate(e.date)}</div><div style={{fontSize:14,color:P.text}}>{e.text}</div></div></div>)}
         {conns.length>0&&<><div style={secLabel}>Connections</div><div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>{conns.map((c,i)=>{const lc=connColor(c.type);return(<button key={i} onClick={()=>onNavigate(c.node.id)} style={{display:"flex",alignItems:"center",gap:7,background:P.inputBg,border:`1.5px solid ${lc||P.border}`,borderRadius:20,padding:"6px 12px",fontSize:13,color:P.text,cursor:"pointer"}}><div style={{width:18,height:18,borderRadius:"50%",background:nodeMainColor(c.node,allLinks,allNodes),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"white"}}>{c.node.name[0]}</div>{c.node.name.split(" ")[0]}{c.type&&<span style={{color:lc||P.muted,fontSize:11,fontWeight:600}}>{c.type}</span>}</button>);})}</div></>}
+        {linkedItems.length>0&&<><div style={secLabel}>Recommended</div><div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>{linkedItems.map(it=><button key={it.id} onClick={()=>onNavigate(it.id)} style={{display:"flex",alignItems:"center",gap:6,background:P.inputBg,border:`1.5px solid ${collectionDef(it.collection)?.color||P.border}`,borderRadius:20,padding:"6px 12px",fontSize:13,color:P.text,cursor:"pointer",fontFamily:"inherit"}}>{it.icon} {it.name}</button>)}</div></>}
         {conns.length===0&&aboutSorted.length===0&&<div style={{textAlign:"center",padding:"16px 0",color:P.dim,fontSize:13}}>No connections yet — tap Edit to start</div>}
         <button onClick={onClose} style={{...pbtn("secondary"),width:"100%",textAlign:"center"}}>Close</button>
       </>)}
@@ -1077,6 +1082,158 @@ function AIChatModal({allNodes, onSave, onCancel}) {
   );
 }
 
+// ===== Collections (Books / Places / Recipes) =====
+const COLLECTIONS_ROOT = {id:"collections",name:"Collections",type:"collection",color:"#BD9CE2",icon:"✦"};
+const COLLECTIONS = [
+  {key:"books",name:"Books",singular:"book",color:"#F5D982",icon:"📖",
+    fixed:[{key:"author",label:"Author"}],
+    optional:[{key:"quote",label:"Quote",multiline:true}],
+    people:{type:"Recommend to",label:"Recommend to"}},
+  {key:"places",name:"Places",singular:"place",color:"#C8E6D1",icon:"📍",
+    fixed:[{key:"location",label:"City / country"},{key:"kind",label:"Type",options:["Restaurant","Café","Bar","Nature","Shop","Hotel","Attraction","Other"]},{key:"when",label:"When",type:"date"}],
+    optional:[{key:"mapsUrl",label:"Google Maps link",type:"url"}]},
+  {key:"recipes",name:"Recipes",singular:"recipe",color:"#FFD5BF",icon:"🍳",
+    fixed:[],
+    optional:[{key:"change",label:"Change I made",multiline:true},{key:"link",label:"Recipe link",type:"url"}]},
+];
+function collectionDef(key){return COLLECTIONS.find(c=>c.key===key);}
+function collectionNodeId(key){return "col_"+key;}
+function collectionKeyOfNode(node){return node?.type==="collection"&&node.id!=="collections"?node.id.replace(/^col_/,""):null;}
+function isUrl(v){return /^https?:\/\//i.test(String(v||"").trim());}
+function fieldDisplay(f,v){if(f.type==="date")return formatDate(v);return v;}
+
+function FieldInput({f,value,onChange,autoFocus}){
+  if(f.options)return(<select value={value||""} onChange={e=>onChange(e.target.value)} style={{...inp,color:value?P.text:P.muted}}><option value="">{f.label}…</option>{f.options.map(o=><option key={o} value={o}>{o}</option>)}</select>);
+  if(f.multiline)return(<textarea value={value||""} onChange={e=>onChange(e.target.value)} rows={3} autoFocus={autoFocus} style={{...inp,resize:"none",lineHeight:1.5}}/>);
+  return(<input type={f.type==="date"?"date":f.type==="url"?"url":"text"} value={value||""} onChange={e=>onChange(e.target.value)} placeholder={f.type==="url"?"https://…":""} autoFocus={autoFocus} style={inp}/>);
+}
+
+// ===== Item Card =====
+function ItemCard({item,allNodes,allLinks,onClose,onNavigate,onUpdate,onAddNote,onLinkPerson,onUnlinkPerson,onDelete,isSidePanel,saving}){
+  const def=collectionDef(item.collection)||{name:"Item",singular:"item",color:"#D9C3F4",icon:"•",fixed:[],optional:[]};
+  const[editing,setEditing]=useState(false);
+  const[draft,setDraft]=useState(null);
+  const[showAddField,setShowAddField]=useState(false);
+  const[showAddNote,setShowAddNote]=useState(false);const[noteDate,setNoteDate]=useState("");const[noteText,setNoteText]=useState("");
+  const[personSearch,setPersonSearch]=useState("");const[showPersonPick,setShowPersonPick]=useState(false);
+  const[showDelConfirm,setShowDelConfirm]=useState(false);
+  const touchStart=useRef(null);
+  const fields=item.fields||{};
+  const linkedPeople=allLinks.filter(l=>(l.source===item.id||l.target===item.id)&&l.type===def.people?.type).map(l=>allNodes.find(n=>n.id===(l.source===item.id?l.target:l.source))).filter(n=>n&&n.type==="person");
+  const notes=[...(item.about||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const setOptional=def.optional.filter(f=>fields[f.key]);
+  function startEdit(){setDraft({name:item.name,fields:{...fields}});setEditing(true);}
+  function saveEdit(){
+    const clean={};Object.entries(draft.fields).forEach(([k,v])=>{if(v!==undefined&&v!==null&&String(v).trim()!=="")clean[k]=v;});
+    onUpdate(item.id,{name:draft.name.trim()||item.name,fields:clean});setEditing(false);setDraft(null);setShowAddField(false);
+  }
+  function setField(k,v){setDraft(d=>({...d,fields:{...d.fields,[k]:v}}));}
+  function addNote(){if(!noteText.trim())return;onAddNote(item.id,{date:noteDate||new Date().toISOString().slice(0,10),text:noteText.trim()});setNoteText("");setNoteDate("");setShowAddNote(false);}
+  const personMatches=personSearch.trim()?allNodes.filter(n=>n.type==="person"&&n.name.toLowerCase().includes(personSearch.toLowerCase())&&!linkedPeople.some(p=>p.id===n.id)).slice(0,6):[];
+  const panelStyle=isSidePanel?{position:"absolute",top:0,right:0,bottom:0,width:320,background:P.surface,borderLeft:`1.5px solid ${P.border}`,boxShadow:`-4px 0 20px ${P.shadow}`,padding:"24px 20px 40px",overflowY:"auto",zIndex:20}:cardBase;
+  const FBOX={border:`1.5px solid ${P.borderSoft}`,borderRadius:14,padding:"0 14px",marginBottom:12};
+  const unsetOptional=editing?def.optional.filter(f=>draft.fields[f.key]===undefined):[];
+  return(
+    <div style={panelStyle} onTouchStart={e=>{if(!isSidePanel)touchStart.current=e.touches[0].clientY;}} onTouchEnd={e=>{if(!isSidePanel&&touchStart.current!==null&&e.changedTouches[0].clientY-touchStart.current>80)onClose();touchStart.current=null;}}>
+      {!isSidePanel&&<div style={handle}/>}
+      {isSidePanel&&<button onClick={onClose} style={{position:"absolute",top:16,right:16,background:"none",border:"none",cursor:"pointer",fontSize:18,color:P.muted}}>×</button>}
+      {saving&&<div style={{textAlign:"center",fontSize:11,color:P.muted,marginBottom:8}}>Saving…</div>}
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+        <div style={{width:52,height:52,borderRadius:16,background:`${def.color}55`,border:`2px solid ${def.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>{def.icon}</div>
+        <div style={{flex:1}}>
+          {editing?<input value={draft.name} onChange={e=>setDraft(d=>({...d,name:e.target.value}))} style={{...inp,fontSize:17,fontWeight:700,background:"transparent",border:"none",borderBottom:`1.5px solid ${P.border}`,borderRadius:0,padding:"4px 0"}}/>:<div style={{fontSize:18,fontWeight:700,color:P.text}}>{item.name}</div>}
+          <div style={{fontSize:12,color:P.muted,marginTop:2}}>{def.name}</div>
+        </div>
+        <button onClick={editing?saveEdit:startEdit} style={{...pbtn(editing?"primary":"secondary"),flexShrink:0,padding:"7px 14px"}}>{editing?"Done":"Edit"}</button>
+      </div>
+
+      {!editing&&(<>
+        {(def.fixed.some(f=>fields[f.key])||setOptional.length>0)&&(
+          <div style={FBOX}>
+            {[...def.fixed.filter(f=>fields[f.key]),...setOptional].map((f,i,arr)=>(
+              <div key={f.key} style={{...fRow,borderBottom:i<arr.length-1?fRow.borderBottom:"none",gap:12}}>
+                {isUrl(fields[f.key])
+                  ?<a href={fields[f.key]} target="_blank" rel="noopener noreferrer" style={{fontSize:14,color:P.link,textDecoration:"none",fontWeight:600}}>{f.key==="mapsUrl"?"Open in Google Maps ↗":"Open link ↗"}</a>
+                  :<span style={{fontSize:14,color:P.text,whiteSpace:"pre-wrap",fontStyle:f.key==="quote"?"italic":"normal"}}>{f.key==="quote"?`“${fields[f.key]}”`:fieldDisplay(f,fields[f.key])}</span>}
+                <span style={{fontSize:12,color:P.muted,flexShrink:0}}>{f.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {def.people&&linkedPeople.length>0&&<>
+          <div style={secLabel}>{def.people.label}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+            {linkedPeople.map(p=><button key={p.id} onClick={()=>onNavigate(p.id)} style={{display:"flex",alignItems:"center",gap:7,background:P.inputBg,border:`1.5px solid ${P.border}`,borderRadius:20,padding:"6px 12px",fontSize:13,color:P.text,cursor:"pointer",fontFamily:"inherit"}}><div style={{width:18,height:18,borderRadius:"50%",background:personBaseColor(p.id,allLinks,allNodes),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"white"}}>{p.name[0]}</div>{p.name.split(" ")[0]}</button>)}
+          </div>
+        </>}
+        <div style={secLabel}>About</div>
+        {notes.length===0&&!showAddNote&&<div style={{fontSize:13,color:P.dim,marginBottom:8}}>No notes yet</div>}
+        {notes.map((e,i)=><div key={i} style={{display:"flex",gap:10,paddingBottom:10}}><div style={{width:7,height:7,borderRadius:"50%",background:def.color,marginTop:5,flexShrink:0,opacity:i===0?1:0.6}}/><div><div style={{fontSize:11,color:P.muted,marginBottom:2}}>{formatDate(e.date)}</div><div style={{fontSize:14,color:P.text,whiteSpace:"pre-wrap"}}>{e.text}</div></div></div>)}
+        {!showAddNote?<button onClick={()=>setShowAddNote(true)} style={{...dashedBtn,marginBottom:12}}>+ Add note</button>:<div style={{marginBottom:12,display:"flex",flexDirection:"column",gap:8}}><input type="date" value={noteDate} onChange={e=>setNoteDate(e.target.value)} style={inp}/><textarea value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder={item.collection==="places"?"How was it? Would you go back?":item.collection==="recipes"?"How did it turn out?":"Your thoughts…"} rows={3} autoFocus style={{...inp,resize:"none",lineHeight:1.5}}/><div style={{display:"flex",gap:8}}><button onClick={addNote} style={{...pbtn("primary"),flex:1}}>Save</button><button onClick={()=>setShowAddNote(false)} style={{...pbtn("secondary"),flex:1}}>Cancel</button></div></div>}
+        <button onClick={onClose} style={{...pbtn("secondary"),width:"100%",textAlign:"center"}}>Close</button>
+      </>)}
+
+      {editing&&draft&&(<>
+        {def.fixed.map(f=><div key={f.key} style={{marginBottom:12}}><div style={{fontSize:11,color:P.muted,marginBottom:4}}>{f.label}</div><FieldInput f={f} value={draft.fields[f.key]} onChange={v=>setField(f.key,v)}/></div>)}
+        {def.optional.filter(f=>draft.fields[f.key]!==undefined).map(f=>(
+          <div key={f.key} style={{marginBottom:12}}>
+            <div style={{fontSize:11,color:P.muted,marginBottom:4}}>{f.label}</div>
+            <div style={{display:"flex",gap:6,alignItems:"flex-start"}}>
+              <div style={{flex:1}}><FieldInput f={f} value={draft.fields[f.key]} onChange={v=>setField(f.key,v)} autoFocus={!fields[f.key]}/></div>
+              <button onClick={()=>setDraft(d=>{const fl={...d.fields};delete fl[f.key];return{...d,fields:fl};})} style={{...pbtn("danger"),padding:"10px 12px"}}>×</button>
+            </div>
+          </div>
+        ))}
+        {unsetOptional.length>0&&(!showAddField
+          ?<button onClick={()=>setShowAddField(true)} style={{...dashedBtn,marginBottom:12}}>+ Add detail</button>
+          :<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+            {unsetOptional.map(f=><button key={f.key} onClick={()=>{setField(f.key,"");setShowAddField(false);}} style={{padding:"7px 12px",borderRadius:20,background:P.inputBg,border:`1.5px solid ${P.border}`,fontSize:13,color:P.text,cursor:"pointer",fontFamily:"inherit"}}>+ {f.label}</button>)}
+            <button onClick={()=>setShowAddField(false)} style={{padding:"7px 12px",borderRadius:20,background:"transparent",border:"none",fontSize:13,color:P.muted,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          </div>)}
+        {def.people&&<>
+          <div style={secLabel}>{def.people.label}</div>
+          {linkedPeople.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}}>
+            {linkedPeople.map(p=><span key={p.id} style={{fontSize:12,padding:"3px 8px 3px 10px",borderRadius:20,background:P.inputBg,border:`1.5px solid ${P.border}`,color:P.text,fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}>{p.name}<button onClick={()=>onUnlinkPerson(item.id,p.id,def.people.type)} style={{border:"none",background:"none",cursor:"pointer",padding:0,fontSize:13,color:P.muted,fontWeight:700,marginLeft:2}}>×</button></span>)}
+          </div>}
+          {!showPersonPick?<button onClick={()=>setShowPersonPick(true)} style={{...dashedBtn,marginBottom:12}}>+ {def.people.label} someone</button>:(
+            <div style={{marginBottom:12,display:"flex",flexDirection:"column",gap:6}}>
+              <input value={personSearch} onChange={e=>setPersonSearch(e.target.value)} placeholder="Type a name…" autoFocus style={inp}/>
+              {personMatches.map(m=><button key={m.id} onClick={()=>{onLinkPerson(item.id,m.id,def.people.type);setPersonSearch("");setShowPersonPick(false);}} style={{textAlign:"left",...pbtn("secondary"),padding:"8px 12px"}}>{m.name}</button>)}
+              {personSearch.trim()&&personMatches.length===0&&<div style={{fontSize:12,color:P.muted,padding:"2px 4px"}}>No one by that name</div>}
+              <button onClick={()=>{setShowPersonPick(false);setPersonSearch("");}} style={{...pbtn("secondary")}}>Cancel</button>
+            </div>
+          )}
+        </>}
+        {!showDelConfirm?<button onClick={()=>setShowDelConfirm(true)} style={{...pbtn("danger"),width:"100%",textAlign:"center",marginTop:8}}>Delete {def.singular}</button>:<div style={{marginTop:8,border:`1.5px solid ${P.danger}40`,borderRadius:14,padding:14}}><div style={{fontSize:14,marginBottom:12,color:P.text}}>Remove {item.name}?</div><div style={{display:"flex",gap:8}}><button onClick={()=>onDelete(item.id)} style={{...pbtn("danger"),flex:1}}>Yes, delete</button><button onClick={()=>setShowDelConfirm(false)} style={{...pbtn("secondary"),flex:1}}>Cancel</button></div></div>}
+      </>)}
+    </div>
+  );
+}
+
+// ===== Add Item =====
+function AddItemModal({collectionKey,onSave,onCancel}){
+  const def=collectionDef(collectionKey);
+  const[name,setName]=useState("");
+  const[fields,setFields]=useState({});
+  if(!def)return null;
+  const nameLabel={books:"Book title",places:"Place name",recipes:"Recipe name"}[def.key]||"Name";
+  function save(){if(!name.trim())return;const clean={};Object.entries(fields).forEach(([k,v])=>{if(String(v||"").trim())clean[k]=v;});onSave(def.key,name.trim(),clean);}
+  return(
+    <div onClick={onCancel} style={{position:"absolute",inset:0,background:"rgba(61,32,48,0.3)",backdropFilter:"blur(4px)",zIndex:30,display:"flex",alignItems:"flex-end"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:P.surface,borderRadius:"24px 24px 0 0",border:`1.5px solid ${P.border}`,boxShadow:`0 -4px 24px ${P.shadow}`,padding:"20px 20px 44px",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={handle}/>
+        <div style={{fontSize:17,fontWeight:700,color:P.text,marginBottom:4}}>{def.icon} Add a {def.singular}</div>
+        <div style={{fontSize:13,color:P.muted,marginBottom:14}}>You can add notes and more details after.</div>
+        <div style={{fontSize:11,color:P.muted,marginBottom:4}}>{nameLabel}</div>
+        <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&def.fixed.length===0&&save()} autoFocus style={{...inp,marginBottom:12,fontSize:15}}/>
+        {def.fixed.map(f=><div key={f.key} style={{marginBottom:12}}><div style={{fontSize:11,color:P.muted,marginBottom:4}}>{f.label}</div><FieldInput f={f} value={fields[f.key]} onChange={v=>setFields(x=>({...x,[f.key]:v}))}/></div>)}
+        <button onClick={save} style={{...pbtn("primary"),width:"100%",fontSize:15,padding:13,marginBottom:6,opacity:name.trim()?1:0.4}}>Add {def.singular}</button>
+        <button onClick={onCancel} style={{width:"100%",padding:13,background:"transparent",color:P.muted,border:"none",fontSize:15,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 // ===== Main App =====
 function MainApp(){
   const containerRef=useRef(null);
@@ -1115,6 +1272,8 @@ function MainApp(){
   const[showUncategorized,setShowUncategorized]=useState(false);
   const[newNodeId,setNewNodeId]=useState(null);
   const[activeReminders,setActiveReminders]=useState([]);
+  const[activeItemId,setActiveItemId]=useState(null);
+  const[addItemFor,setAddItemFor]=useState(null);
 
   useEffect(()=>{const el=containerRef.current;if(!el)return;const obs=new ResizeObserver(entries=>{const{width,height}=entries[0].contentRect;setDims({width,height});});obs.observe(el);return()=>obs.disconnect();},[]);
 
@@ -1131,7 +1290,11 @@ function MainApp(){
         imageUrl:c.imageUrl
       }));
       const meNode={id:"me",name:"You",type:"me"};
-      const allPeople=[meNode,...cats,...people];
+      // Collections: virtual root + Books/Places/Recipes, items from the Items sheet
+      const colNodes=[COLLECTIONS_ROOT,...COLLECTIONS.map(c=>({id:collectionNodeId(c.key),name:c.name,type:"collection",color:c.color,icon:c.icon,collectionKey:c.key}))];
+      const itemNodes=(data.items||[]).filter(it=>collectionDef(it.collection)).map(it=>({id:it.id,name:it.name||"(untitled)",type:"item",collection:it.collection,fields:it.fields||{},about:it.about||[],icon:collectionDef(it.collection).icon}));
+      const colLinks=[{source:"me",target:"collections",type:"circle"},...COLLECTIONS.map(c=>({source:"collections",target:collectionNodeId(c.key),type:"circle"})),...itemNodes.map(it=>({source:collectionNodeId(it.collection),target:it.id,type:"item"}))];
+      const allPeople=[meNode,...cats,...people,...colNodes,...itemNodes];
       setNodes(allPeople);
       const rels=(data.relationships||[]).map(r=>({source:r.personA,target:r.personB,type:r.type}));
       // Sub-category relationships: cat→cat links stored as type "subcategory" in relationships
@@ -1148,7 +1311,7 @@ function MainApp(){
       });
       // Non-subcategory rels (person↔person)
       const personRels=rels.filter(r=>!catIds.has(r.source)||!catIds.has(r.target));
-      setLinks([...catLinks,...subCatLinks,...personRels,...peopleLinks]);
+      setLinks([...catLinks,...subCatLinks,...personRels,...peopleLinks,...colLinks]);
       setFieldDefs((data.fieldDefs||[]).map(f=>({...f,important:f.important===true||f.important==="TRUE"||f.important==="true"})));
       const allReminders=getReminders(allPeople,data.fieldDefs||[]);
       setActiveReminders(allReminders.filter(isReminderActive));
@@ -1163,9 +1326,11 @@ function MainApp(){
   const activePerson=nodes.find(n=>n.id===activeCardId);
   const meNode=nodes.find(n=>n.id==="me");
   const birthdays=upcomingBirthdays(nodes,30);
-  const stats={people:nodes.filter(n=>n.type==="person").length,categories:nodes.filter(n=>n.type==="category").length,connections:links.filter(l=>l.type!=="circle").length,about:nodes.filter(n=>n.type==="person").reduce((s,n)=>s+(n.about?.length||0),0)};
+  const stats={people:nodes.filter(n=>n.type==="person").length,categories:nodes.filter(n=>n.type==="category").length,connections:links.filter(l=>l.type!=="circle"&&l.type!=="item"&&nodes.find(n=>n.id===l.source)?.type!=="item").length,about:nodes.filter(n=>n.type==="person").reduce((s,n)=>s+(n.about?.length||0),0)};
   const uncategorizedPeople=nodes.filter(n=>{if(n.type!=="person")return false;return !links.some(l=>{const otherId=l.source===n.id?l.target:l.target===n.id?l.source:null;return otherId&&nodes.find(x=>x.id===otherId)?.type==="category";});});
-  const panelWidth=isDesktop&&activePerson?320:0;
+  const activeItem=nodes.find(n=>n.id===activeItemId&&n.type==="item");
+  const centerColKey=collectionKeyOfNode(centerNode);
+  const panelWidth=isDesktop&&(activePerson||activeItem)?320:0;
   const graphWidth=dims.width-panelWidth;
   const bannerHeight=activeReminders.length>0?100:0;
   // Bottom bar height: home has search+AI bar (~130px), non-home has add-person button (~90px)
@@ -1176,15 +1341,18 @@ function MainApp(){
   function onNodeTap(node){
     // Always navigate into the node — person or category
     setNavStack(s=>[...s,centerId]);setCenterId(node.id);setActiveCardId(null);setShowMeCard(false);
+    setActiveItemId(node.type==="item"?node.id:null);
   }
   function onCenterTap(node){
     if(node.id==="me"){setShowMeCard(true);return;}
+    if(node.type==="item"){setActiveItemId(node.id);return;}
     if(node.type==="person"){setActiveCardId(node.id);return;}
     if(node.type==="category"){setEditSheetNode(node);return;}
   }
-  function navigateTo(nodeId){setNavStack(s=>[...s,centerId]);setCenterId(nodeId);setActiveCardId(null);setShowMeCard(false);}
+  function navigateTo(nodeId){setNavStack(s=>[...s,centerId]);setCenterId(nodeId);setActiveCardId(null);setShowMeCard(false);setActiveItemId(nodes.find(n=>n.id===nodeId)?.type==="item"?nodeId:null);}
   function goBack(){
     if(activeCardId&&!isDesktop){setActiveCardId(null);return;}
+    if(activeItemId&&!isDesktop){setActiveItemId(null);return;}
     if(showMeCard){setShowMeCard(false);return;}
     if(navStack.length>0){const prev=navStack[navStack.length-1];setNavStack(s=>s.slice(0,-1));setCenterId(prev);}
   }
@@ -1303,6 +1471,39 @@ function MainApp(){
     }catch(e){console.error(e);}finally{setSaving(false);}
   }
   async function saveQuickNote(personId,entry){setNodes(prev=>prev.map(n=>n.id===personId?{...n,about:[...n.about,entry]}:n));setShowQuickNote(false);setSaving(true);try{await callBackend("addAbout",{personId,date:entry.date,text:entry.text});}catch(e){console.error(e);}finally{setSaving(false);}}
+  // ===== Collections actions =====
+  async function addItem(collectionKey,name,fields){
+    setSaving(true);
+    try{
+      const res=await callBackend("addItem",{collection:collectionKey,name,fields});const id=res.id;
+      const def=collectionDef(collectionKey);
+      setNodes(prev=>[...prev,{id,name,type:"item",collection:collectionKey,fields,about:[],icon:def.icon}]);
+      setLinks(prev=>[...prev,{source:collectionNodeId(collectionKey),target:id,type:"item"}]);
+      setAddItemFor(null);setNewNodeId(id);setTimeout(()=>setActiveItemId(id),100);setTimeout(()=>setNewNodeId(null),2000);
+    }catch(e){console.error(e);alert("Couldn't save: "+e.message);}finally{setSaving(false);}
+  }
+  async function updateItem(id,patch){
+    setNodes(prev=>prev.map(n=>n.id===id?{...n,...patch}:n));
+    setSaving(true);try{await callBackend("updateItem",{id,...patch});}catch(e){console.error(e);}finally{setSaving(false);}
+  }
+  async function addItemNote(id,entry){
+    setNodes(prev=>prev.map(n=>n.id===id?{...n,about:[...(n.about||[]),entry]}:n));
+    setSaving(true);try{await callBackend("addAbout",{personId:id,date:entry.date,text:entry.text});}catch(e){console.error(e);}finally{setSaving(false);}
+  }
+  async function linkItemPerson(itemId,personId,type){
+    setLinks(prev=>[...prev,{source:itemId,target:personId,type}]);
+    setSaving(true);try{await callBackend("addRelationship",{personA:itemId,personB:personId,type});}catch(e){console.error(e);}finally{setSaving(false);}
+  }
+  async function unlinkItemPerson(itemId,personId){
+    setLinks(prev=>prev.filter(l=>!((l.source===itemId&&l.target===personId)||(l.source===personId&&l.target===itemId))));
+    setSaving(true);try{await callBackend("removeRelationship",{personA:itemId,personB:personId});}catch(e){console.error(e);}finally{setSaving(false);}
+  }
+  async function deleteItem(id){
+    const item=nodes.find(n=>n.id===id);
+    setNodes(prev=>prev.filter(n=>n.id!==id));setLinks(prev=>prev.filter(l=>l.source!==id&&l.target!==id));setActiveItemId(null);
+    if(centerId===id){const prev=navStack[navStack.length-1]||(item?collectionNodeId(item.collection):"me");setNavStack(s=>s.slice(0,-1));setCenterId(prev);}
+    setSaving(true);try{await callBackend("deleteItem",{id});}catch(e){console.error(e);}finally{setSaving(false);}
+  }
   async function addFieldDef(def){setFieldDefs(prev=>[...prev,def]);try{await callBackend("addFieldDef",{label:def.label,type:def.type,important:false});}catch(e){console.error(e);}}
 
   async function handleAISave(action){
@@ -1313,7 +1514,7 @@ function MainApp(){
 
   // Breadcrumb = navStack + centerId, all as ids
   const breadcrumb=centerId==="me"?[...navStack,"me"]:[...navStack,centerId];
-  const searchResults=search.trim()?nodes.filter(n=>(n.type==="person"||n.type==="category")&&n.name.toLowerCase().includes(search.toLowerCase())):[];
+  const searchResults=search.trim()?nodes.filter(n=>(n.type==="person"||n.type==="category"||n.type==="item")&&n.name.toLowerCase().includes(search.toLowerCase())):[];
 
   if(loading)return <LoadingScreen/>;
   if(loadError)return <ErrorScreen message={loadError} onRetry={loadData}/>;
@@ -1334,14 +1535,15 @@ function MainApp(){
       {activeReminders.length>0&&<ReminderBanner reminders={activeReminders} onDismiss={handleDismissReminder} onSnooze={handleSnoozeReminder} onPersonClick={(personId)=>{setActiveCardId(personId);}}/>}
 
       {/* Top bar */}
-      <div style={{position:"absolute",top:activeReminders.length>0?bannerHeight:0,left:0,right:isDesktop&&activePerson?320:0,padding:"14px 20px",display:"flex",alignItems:"center",gap:10,background:`linear-gradient(to bottom, ${P.gradTop} 60%, transparent)`,zIndex:10,transition:"top 0.3s ease"}}>
+      <div style={{position:"absolute",top:activeReminders.length>0?bannerHeight:0,left:0,right:panelWidth,padding:"14px 20px",display:"flex",alignItems:"center",gap:10,background:`linear-gradient(to bottom, ${P.gradTop} 60%, transparent)`,zIndex:10,transition:"top 0.3s ease"}}>
         {!isHome&&<button onClick={goBack} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.text,fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:`0 1px 4px ${P.shadow}`}}>←</button>}
         <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:P.muted,flex:1,overflow:"hidden"}}>
           {!isHome&&breadcrumb.map((id,i)=>{const n=nodes.find(x=>x.id===id);const label=id==="me"?"kith":(n?.name?.split(" ")[0]||id);const isLast=i===breadcrumb.length-1;return(<span key={i} style={{display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>{isLast?<span style={{color:P.text,fontWeight:600}}>{label}</span>:<button onClick={()=>{setNavStack(breadcrumb.slice(0,i));setCenterId(id);setActiveCardId(null);setShowMeCard(false);}} style={{background:"none",border:"none",cursor:"pointer",color:P.muted,fontSize:13,padding:0,fontFamily:"inherit",textDecoration:"underline",textDecorationColor:P.border}}>{label}</button>}{!isLast&&<span style={{opacity:0.4}}>→</span>}</span>);})}
           {isHome&&<img src={KITH_LOGO} alt="Kith" style={{height:32,width:"auto",mixBlendMode:"multiply",opacity:0.92}}/>}
         </div>
         {centerNode?.type==="person"&&<button onClick={()=>setActiveCardId(centerNode.id)} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.muted,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>👤</button>}
-        {centerNode?.type!=="category"&&<button onClick={()=>setAddModalCenter(centerNode||nodes.find(n=>n.id==="me"))} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.text,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>+</button>}
+        {centerColKey&&<button onClick={()=>setAddItemFor(centerColKey)} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.text,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>+</button>}
+        {centerNode?.type!=="category"&&centerNode?.type!=="collection"&&centerNode?.type!=="item"&&<button onClick={()=>setAddModalCenter(centerNode||nodes.find(n=>n.id==="me"))} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.text,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>+</button>}
         {(isHome||centerNode?.type==="category")&&<button onClick={()=>setShowAddCategory(true)} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.muted,fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>⊕</button>}
         {isHome&&uncategorizedPeople.length>0&&<button onClick={()=>setShowUncategorized(true)} style={{position:"relative",width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.muted,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>👤<span style={{position:"absolute",top:-5,right:-5,background:P.youStroke,color:"white",borderRadius:"50%",width:16,height:16,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{uncategorizedPeople.length}</span></button>}
       </div>
@@ -1397,13 +1599,14 @@ function MainApp(){
                     const parentCatId=parentLink?(parentLink.source===n.id?parentLink.target:parentLink.source):null;
                     return(<div key={n.id} onClick={()=>{
                       setSearch("");
+                      if(n.type==="item"){navigateTo(collectionNodeId(n.collection));setActiveItemId(n.id);return;}
                       if(isCat){navigateTo(n.id);}
                       else if(parentCatId){navigateTo(parentCatId);setActiveCardId(n.id);}
                       else{setActiveCardId(n.id);}
                     }} style={{padding:"11px 16px",borderBottom:`1px solid ${P.borderSoft}`,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:10,color:P.text,background:P.surface}}>
                       <div style={{width:28,height:28,borderRadius:"50%",background:`${isCat?(n.color||"#A896C8"):personBaseColor(n.id,links,nodes)}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isCat?(n.color||"#A896C8"):personBaseColor(n.id,links,nodes)}}>{n.name[0]}</div>
                       <div style={{flex:1}}>{n.name}</div>
-                      <span style={{fontSize:11,color:P.muted}}>{isCat?"category":"person"}</span>
+                      <span style={{fontSize:11,color:P.muted}}>{n.type==="item"?(collectionDef(n.collection)?.singular||"item"):isCat?"category":"person"}</span>
                     </div>);
                   })}
                 </div>
@@ -1427,7 +1630,13 @@ function MainApp(){
       {!isHome&&!editMode&&(
         <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 20px 40px",background:`linear-gradient(to top, ${P.gradBot} 60%, transparent)`,zIndex:10}}>
           <div style={{display:"flex",gap:8}}>
-            {centerNode?.type==="person"
+            {centerNode?.type==="item"
+              ? <button onClick={()=>setActiveItemId(centerNode.id)} style={{...pbtn("primary"),flex:1,fontSize:15,padding:13,borderRadius:14,boxShadow:`0 2px 8px ${P.shadow}`}}>✎ Open {centerNode.name}</button>
+              : centerColKey
+              ? <button onClick={()=>setAddItemFor(centerColKey)} style={{...pbtn("primary"),flex:1,fontSize:15,padding:13,borderRadius:14,boxShadow:`0 2px 8px ${P.shadow}`}}>+ Add {collectionDef(centerColKey).singular}</button>
+              : centerNode?.id==="collections"
+              ? <div style={{flex:1,fontSize:13,color:P.muted,display:"flex",alignItems:"center",justifyContent:"center"}}>Tap Books, Places or Recipes</div>
+              : centerNode?.type==="person"
               ? <button onClick={()=>setActiveCardId(centerNode.id)} style={{...pbtn("primary"),flex:1,fontSize:15,padding:13,borderRadius:14,boxShadow:`0 2px 8px ${P.shadow}`}}>✎ Edit {centerNode.name.split(" ")[0]}</button>
               : <button onClick={()=>setAddModalCenter(centerNode||nodes.find(n=>n.id==="me"))} style={{...pbtn("primary"),flex:1,fontSize:15,padding:13,borderRadius:14,boxShadow:`0 2px 8px ${P.shadow}`}}>+ Add person</button>
             }
@@ -1439,6 +1648,8 @@ function MainApp(){
       {showUncategorized&&<UncategorizedDrawer people={uncategorizedPeople} allNodes={nodes} allLinks={links} onClose={()=>setShowUncategorized(false)} onSelectPerson={id=>{setActiveCardId(id);}}/>}
       {showMeCard&&(<><div onClick={()=>setShowMeCard(false)} style={{position:"absolute",inset:0,zIndex:15}}/><MeCard me={meNode} stats={stats} allNodes={nodes} onClose={()=>setShowMeCard(false)} onUpdate={updatePerson}/></>)}
       {activePerson&&(<>{!isDesktop&&<div onClick={()=>setActiveCardId(null)} style={{position:"absolute",inset:0,zIndex:15,background:"rgba(61,32,48,0.15)"}}/>}<PersonCard person={nodes.find(n=>n.id===activeCardId)||activePerson} allNodes={nodes} allLinks={links} fieldDefs={fieldDefs} onClose={()=>setActiveCardId(null)} onNavigate={navigateTo} onUpdate={updatePerson} onAddFieldDef={addFieldDef} onDelete={deletePerson} isSidePanel={isDesktop} saving={saving}/></>)}
+      {activeItem&&!activePerson&&(<>{!isDesktop&&<div onClick={()=>setActiveItemId(null)} style={{position:"absolute",inset:0,zIndex:15,background:"rgba(61,32,48,0.15)"}}/>}<ItemCard key={activeItem.id} item={activeItem} allNodes={nodes} allLinks={links} onClose={()=>setActiveItemId(null)} onNavigate={navigateTo} onUpdate={updateItem} onAddNote={addItemNote} onLinkPerson={linkItemPerson} onUnlinkPerson={unlinkItemPerson} onDelete={deleteItem} isSidePanel={isDesktop} saving={saving}/></>)}
+      {addItemFor&&<AddItemModal collectionKey={addItemFor} onSave={addItem} onCancel={()=>setAddItemFor(null)}/>}
       {showQuickNote&&<QuickNoteModal allNodes={nodes} onSave={saveQuickNote} onCancel={()=>setShowQuickNote(false)}/>}
       {showAIChat&&<AIChatModal allNodes={nodes} onSave={handleAISave} onCancel={()=>setShowAIChat(false)}/>}
       {addModalCenter&&<AddPersonModal centerNode={addModalCenter} allNodes={nodes} onSave={addPerson} onOpenExisting={id=>{setAddModalCenter(null);setActiveCardId(id);}} onCancel={()=>setAddModalCenter(null)}/>}

@@ -12,6 +12,10 @@
  *   - FieldDefinitions   : id, label, type, important
  *   - FieldValues        : id, personId, fieldId, value
  *   - Categories         : name, imageUrl
+ *   - Items              : id, collection, name, fields (JSON)
+ *     (Collections: books / places / recipes. Item notes live in the About
+ *      sheet with personId = item id; "Recommend to" links live in
+ *      Relationships with personA = item id.)
  *
  * SECURITY: every request must include a "key" matching SECRET_KEY below.
  * Change this to something only you know before deploying.
@@ -74,6 +78,7 @@ const ABOUT_HEADERS = ["id", "personId", "date", "text"];
 const FIELD_DEFS_HEADERS = ["id", "label", "type", "important"];
 const FIELD_VALUES_HEADERS = ["id", "personId", "fieldId", "value"];
 const CATEGORIES_HEADERS = ["name", "imageUrl"];
+const ITEMS_HEADERS = ["id", "collection", "name", "fields"];
 
 function peopleSheet_() { return getSheet_("People", PEOPLE_HEADERS); }
 function relationshipsSheet_() { return getSheet_("Relationships", RELATIONSHIPS_HEADERS); }
@@ -81,6 +86,13 @@ function aboutSheet_() { return getSheet_("About", ABOUT_HEADERS); }
 function fieldDefsSheet_() { return getSheet_("FieldDefinitions", FIELD_DEFS_HEADERS); }
 function fieldValuesSheet_() { return getSheet_("FieldValues", FIELD_VALUES_HEADERS); }
 function categoriesSheet_() { return getSheet_("Categories", CATEGORIES_HEADERS); }
+function itemsSheet_() { return getSheet_("Items", ITEMS_HEADERS); }
+
+function parseFields_(v) {
+  if (!v) return {};
+  if (typeof v === "object") return v;
+  try { return JSON.parse(v); } catch (e) { return {}; }
+}
 
 // ---------- Public API ----------
 // All actions are routed through doGet/doPost below.
@@ -118,11 +130,20 @@ function getAllData_() {
     customValues: valuesByPerson[p.id] || {},
   }));
 
+  const items = sheetToObjects_(itemsSheet_()).map((it) => ({
+    id: it.id,
+    collection: it.collection,
+    name: it.name,
+    fields: parseFields_(it.fields),
+    about: aboutByPerson[it.id] || [],
+  }));
+
   return {
     people: peopleFull,
     relationships,
     fieldDefs,
     categories,
+    items,
   };
 }
 
@@ -332,6 +353,49 @@ function deleteCategory_(params) {
   return { ok: true };
 }
 
+// ---------- Collections (books / places / recipes) ----------
+
+function addItem_(params) {
+  const id = newId_("i");
+  appendObject_(itemsSheet_(), ITEMS_HEADERS, {
+    id,
+    collection: params.collection || "",
+    name: params.name || "",
+    fields: JSON.stringify(parseFields_(params.fields)),
+  });
+  return { id };
+}
+
+function updateItem_(params) {
+  const sheet = itemsSheet_();
+  const rowIndex = findRowIndexById_(sheet, "id", params.id);
+  if (rowIndex === -1) return { error: "Item not found" };
+  if (params.name !== undefined) sheet.getRange(rowIndex, ITEMS_HEADERS.indexOf("name") + 1).setValue(params.name);
+  if (params.fields !== undefined) sheet.getRange(rowIndex, ITEMS_HEADERS.indexOf("fields") + 1).setValue(JSON.stringify(parseFields_(params.fields)));
+  return { ok: true };
+}
+
+function deleteItem_(params) {
+  const sheet = itemsSheet_();
+  const rowIndex = findRowIndexById_(sheet, "id", params.id);
+  if (rowIndex !== -1) sheet.deleteRow(rowIndex);
+  // Remove "Recommend to" links and notes for this item
+  const relSheet = relationshipsSheet_();
+  const rdata = relSheet.getDataRange().getValues();
+  const rh = rdata[0];
+  const aCol = rh.indexOf("personA"), bCol = rh.indexOf("personB");
+  for (let i = rdata.length - 1; i >= 1; i--) {
+    if (String(rdata[i][aCol]) === String(params.id) || String(rdata[i][bCol]) === String(params.id)) relSheet.deleteRow(i + 1);
+  }
+  const aSheet = aboutSheet_();
+  const adata = aSheet.getDataRange().getValues();
+  const pCol = adata[0].indexOf("personId");
+  for (let i = adata.length - 1; i >= 1; i--) {
+    if (String(adata[i][pCol]) === String(params.id)) aSheet.deleteRow(i + 1);
+  }
+  return { ok: true };
+}
+
 /**
  * Uploads a base64-encoded image to a dedicated Drive folder and returns
  * a shareable URL. Used for both person avatars and category images.
@@ -417,6 +481,15 @@ function handleRequest_(params) {
         break;
       case "deleteCategory":
         result = deleteCategory_(params);
+        break;
+      case "addItem":
+        result = addItem_(params);
+        break;
+      case "updateItem":
+        result = updateItem_(params);
+        break;
+      case "deleteItem":
+        result = deleteItem_(params);
         break;
       case "uploadImage":
         result = uploadImage_(params);
