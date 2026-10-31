@@ -13,6 +13,7 @@
  *   - FieldValues        : id, personId, fieldId, value
  *   - Categories         : name, imageUrl
  *   - Items              : id, collection, name, fields (JSON)
+ *   - Settings           : key, value   (e.g. collectionColors as JSON)
  *     (Collections: books / places / recipes. Item notes live in the About
  *      sheet with personId = item id; "Recommend to" links live in
  *      Relationships with personA = item id.)
@@ -97,6 +98,7 @@ const FIELD_DEFS_HEADERS = ["id", "label", "type", "important"];
 const FIELD_VALUES_HEADERS = ["id", "personId", "fieldId", "value"];
 const CATEGORIES_HEADERS = ["name", "imageUrl", "color"];
 const ITEMS_HEADERS = ["id", "collection", "name", "fields"];
+const SETTINGS_HEADERS = ["key", "value"];
 
 function peopleSheet_() { return getSheet_("People", PEOPLE_HEADERS); }
 function relationshipsSheet_() { return getSheet_("Relationships", RELATIONSHIPS_HEADERS); }
@@ -105,6 +107,7 @@ function fieldDefsSheet_() { return getSheet_("FieldDefinitions", FIELD_DEFS_HEA
 function fieldValuesSheet_() { return getSheet_("FieldValues", FIELD_VALUES_HEADERS); }
 function categoriesSheet_() { return getSheet_("Categories", CATEGORIES_HEADERS); }
 function itemsSheet_() { return getSheet_("Items", ITEMS_HEADERS); }
+function settingsSheet_() { return getSheet_("Settings", SETTINGS_HEADERS); }
 
 function parseFields_(v) {
   if (!v) return {};
@@ -156,12 +159,16 @@ function getAllData_() {
     about: aboutByPerson[it.id] || [],
   }));
 
+  const settings = {};
+  sheetToObjects_(settingsSheet_()).forEach((r) => { settings[r.key] = r.value; });
+
   return {
     people: peopleFull,
     relationships,
     fieldDefs,
     categories,
     items,
+    settings,
   };
 }
 
@@ -427,6 +434,16 @@ function deleteCategory_(params) {
   return { ok: true };
 }
 
+// ---------- Settings (small app-wide values) ----------
+
+function setSetting_(params) {
+  const sheet = settingsSheet_();
+  const rowIndex = findRowIndexById_(sheet, "key", params.settingKey);
+  if (rowIndex === -1) appendObject_(sheet, SETTINGS_HEADERS, { key: params.settingKey, value: params.value });
+  else sheet.getRange(rowIndex, colOf_(sheet, "value")).setValue(params.value);
+  return { ok: true };
+}
+
 // ---------- Collections (books / places / recipes) ----------
 
 function addItem_(params) {
@@ -580,6 +597,9 @@ function handleRequest_(params) {
         break;
       case "deleteItem":
         result = deleteItem_(params);
+        break;
+      case "setSetting":
+        result = setSetting_(params);
         break;
       case "uploadImage":
         result = uploadImage_(params);

@@ -178,7 +178,7 @@ function nodeMainColor(node, allLinks, allNodes) {
   if(node.id==="me") return P.youFill;
   if(node.type==="category") return categoryColorFor(node);
   if(node.type==="collection") return node.color||"#BD9CE2";
-  if(node.type==="item") return collectionDef(node.collection)?.color||"#D9C3F4";
+  if(node.type==="item") return allNodes.find(n=>n.id===collectionNodeId(node.collection))?.color||collectionDef(node.collection)?.color||"#D9C3F4";
   return personBaseColor(node.id, allLinks, allNodes);
 }
 
@@ -199,7 +199,7 @@ function getNodeRadius(node, centerId, isL2, allLinks) {
 }
 
 // ===== Smart Reminders =====
-function getReminders(nodes, fieldDefs, links=[]) {
+function getReminders(nodes, fieldDefs) {
   const now = new Date();
   const reminders = [];
   nodes.filter(n=>n.type==="person"&&n.birthday).forEach(n=>{
@@ -210,7 +210,6 @@ function getReminders(nodes, fieldDefs, links=[]) {
     if(daysUntil<=7) reminders.push({
       id:`bday_${n.id}_${next.getFullYear()}`, personId:n.id, personName:n.name,
       type:"birthday", emoji:"🎂",
-      sub:(()=>{const g=links.filter(l=>l.type==="Gift for"&&(l.target===n.id||l.source===n.id)).length;return g?`🎁 ${g} gift idea${g===1?"":"s"} saved — tap to see`:"No gift ideas yet — tap to add one";})(),
       label:daysUntil===0?`${n.name.split(" ")[0]}'s birthday is TODAY!`:daysUntil===1?`${n.name.split(" ")[0]}'s birthday is tomorrow`:`${n.name.split(" ")[0]}'s birthday in ${daysUntil} days`,
       daysUntil,
     });
@@ -660,8 +659,7 @@ function MeCard({me,stats,allNodes,onClose,onUpdate}){
 }
 
 // ===== Person Card =====
-function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpdate,onAddFieldDef,onDelete,onAddGift,isSidePanel,saving}){
-  const[giftText,setGiftText]=useState("");const[showGiftInput,setShowGiftInput]=useState(false);
+function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpdate,onAddFieldDef,onDelete,isSidePanel,saving}){
   const[editing,setEditing]=useState(false);const[draft,setDraft]=useState(null);
   const[showAddAbout,setShowAddAbout]=useState(false);const[newAboutDate,setNewAboutDate]=useState("");const[newAboutText,setNewAboutText]=useState("");
   const[showAddField,setShowAddField]=useState(false);const[newFieldLabel,setNewFieldLabel]=useState("");const[newFieldValue,setNewFieldValue]=useState("");
@@ -677,8 +675,7 @@ function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpd
   const personCats=personCatLinks.map(l=>{const catId=l.source===person.id?l.target:l.source;return allNodes.find(n=>n.id===catId&&n.type==="category");}).filter(Boolean);
   const aboutSorted=[...(person.about||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const conns=allLinks.filter(l=>l.source===person.id||l.target===person.id).map(l=>{const oid=l.source===person.id?l.target:l.source;return{node:allNodes.find(n=>n.id===oid),type:l.type};}).filter(c=>c.node&&c.node.id!=="me"&&c.node.type==="person");
-  const giftItems=allLinks.filter(l=>(l.source===person.id||l.target===person.id)&&l.type==="Gift for").map(l=>allNodes.find(n=>n.id===(l.source===person.id?l.target:l.source))).filter(n=>n&&n.type==="item");
-  const linkedItems=allLinks.filter(l=>(l.source===person.id||l.target===person.id)&&l.type!=="item"&&l.type!=="Gift for").map(l=>allNodes.find(n=>n.id===(l.source===person.id?l.target:l.source))).filter(n=>n&&n.type==="item");
+  const linkedItems=allLinks.filter(l=>(l.source===person.id||l.target===person.id)&&l.type!=="item").map(l=>allNodes.find(n=>n.id===(l.source===person.id?l.target:l.source))).filter(n=>n&&n.type==="item");
   const personCF=fieldDefs.filter(f=>person.customValues?.[f.id]);
   const importantF=fieldDefs.filter(f=>(person.importantFieldIds||[]).includes(f.id)&&person.customValues?.[f.id]);
   const connMatches=connName.trim()&&!connMatchId?allNodes.filter(n=>n.type==="person"&&n.id!==person.id&&n.name.toLowerCase().includes(connName.toLowerCase())):[];
@@ -718,17 +715,6 @@ function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpd
         {aboutSorted.length===0&&<div style={{fontSize:13,color:P.dim,marginBottom:12}}>No entries yet</div>}
         {aboutSorted.map((e,i)=><div key={i} style={{display:"flex",gap:10,paddingBottom:10}}><div style={{width:7,height:7,borderRadius:"50%",background:pColor,marginTop:5,flexShrink:0,opacity:i===0?1:0.5}}/><div><div style={{fontSize:11,color:P.muted,marginBottom:2}}>{formatDate(e.date)}</div><div style={{fontSize:14,color:P.text}}>{e.text}</div></div></div>)}
         {conns.length>0&&<><div style={secLabel}>Connections</div><div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>{conns.map((c,i)=>{const lc=connColor(c.type);return(<button key={i} onClick={()=>onNavigate(c.node.id)} style={{display:"flex",alignItems:"center",gap:7,background:P.inputBg,border:`1.5px solid ${lc||P.border}`,borderRadius:20,padding:"6px 12px",fontSize:13,color:P.text,cursor:"pointer"}}><div style={{width:18,height:18,borderRadius:"50%",background:nodeMainColor(c.node,allLinks,allNodes),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"white"}}>{c.node.name[0]}</div>{c.node.name.split(" ")[0]}{c.type&&<span style={{color:lc||P.muted,fontSize:11,fontWeight:600}}>{c.type}</span>}</button>);})}</div></>}
-        <div style={secLabel}>🎁 Gift ideas</div>
-        {giftItems.length>0&&<div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>{giftItems.map(g=>(
-          <button key={g.id} onClick={()=>onNavigate(g.id)} style={{display:"flex",alignItems:"center",gap:8,background:P.inputBg,border:`1.5px solid ${P.border}`,borderRadius:12,padding:"8px 12px",fontSize:14,color:P.text,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-            <span style={{flex:1,textDecoration:g.fields?.status==="Given"?"line-through":"none"}}>{g.name}</span>
-            {g.fields?.status&&<span style={{fontSize:11,color:g.fields.status==="Idea"?P.muted:P.link,fontWeight:600}}>{g.fields.status}</span>}
-          </button>))}</div>}
-        {!showGiftInput?<button onClick={()=>setShowGiftInput(true)} style={{...dashedBtn,marginBottom:12}}>+ Gift idea for {person.name.split(" ")[0]}</button>:(
-          <div style={{display:"flex",gap:6,marginBottom:12}}>
-            <input value={giftText} onChange={e=>setGiftText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&giftText.trim()){onAddGift(person.id,giftText.trim());setGiftText("");setShowGiftInput(false);}}} placeholder="Noise-cancelling headphones" autoFocus style={{...inp,flex:1}}/>
-            <button onClick={()=>{if(giftText.trim()){onAddGift(person.id,giftText.trim());setGiftText("");}setShowGiftInput(false);}} style={{...pbtn("primary"),padding:"10px 14px"}}>Add</button>
-          </div>)}
         {linkedItems.length>0&&<><div style={secLabel}>Recommended</div><div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>{linkedItems.map(it=><button key={it.id} onClick={()=>onNavigate(it.id)} style={{display:"flex",alignItems:"center",gap:6,background:P.inputBg,border:`1.5px solid ${collectionDef(it.collection)?.color||P.border}`,borderRadius:20,padding:"6px 12px",fontSize:13,color:P.text,cursor:"pointer",fontFamily:"inherit"}}>{it.icon} {it.name}</button>)}</div></>}
         {conns.length===0&&aboutSorted.length===0&&<div style={{textAlign:"center",padding:"16px 0",color:P.dim,fontSize:13}}>No connections yet — tap Edit to start</div>}
         <button onClick={onClose} style={{...pbtn("secondary"),width:"100%",textAlign:"center"}}>Close</button>
@@ -1033,7 +1019,7 @@ async function callClaudeAI(message, people, items) {
 People in their network:
 ${peopleList}
 
-Their Collections (books, places, recipes, gift ideas):
+Their Collections (${COLLECTIONS.map(c=>c.name.toLowerCase()).join(", ")}):
 ${itemList}
 
 Collection types and their fields:
@@ -1043,12 +1029,11 @@ You must respond with ONLY a JSON array (no explanation, no markdown) of actions
 - {"type":"about","personId":"<id>","date":"<YYYY-MM-DD>","text":"<note about this person>"}
 - {"type":"birthday","personId":"<id>","date":"<YYYY-MM-DD>"}
 - {"type":"field","personId":"<id>","fieldLabel":"<label>","value":"<value>"}
-- {"type":"item","collection":"<books|places|recipes|gifts>","name":"<name>","fields":{...},"note":"<optional note>","linkPeople":["<personId>"]}   (a NEW book/place/recipe/gift idea)
+- {"type":"item","collection":"<${COLLECTIONS.map(c=>c.key).join("|")}>","name":"<name>","fields":{...},"note":"<optional note>","linkPeople":["<personId>"]}   (a NEW ${COLLECTIONS.map(c=>c.singular).join("/")})
 - {"type":"itemNote","itemId":"<id>","date":"<YYYY-MM-DD>","text":"<note>"}   (a note on an EXISTING item from the list)
 
 Rules:
 - If the item already exists in the list, use itemNote, never create a duplicate.
-- A gift idea for someone = item in "gifts" with linkPeople = that person.
 - Today's date is ${new Date().toISOString().slice(0,10)}.
 - If nothing matches, return [].
 - Only return actions you are confident about.`;
@@ -1108,7 +1093,7 @@ function AIChatModal({allNodes, onSave, onCancel}) {
     if(a.type==="itemNote")return `Note on "${itemName(a.itemId)}": "${a.text}"`;
     return `${a.fieldLabel} for ${personName(a.personId)}: ${a.value}`;
   }
-  const suggestions=["Had coffee with someone today","Finished a book someone recommended","Gift idea for someone's birthday"];
+  const suggestions=["Had coffee with someone today","Finished a book someone recommended","Save a place I want to visit"];
 
   return(
     <div style={{position:"absolute",inset:0,background:"rgba(245,240,235,0.65)",backdropFilter:"blur(8px)",zIndex:35,display:"flex",alignItems:"flex-end"}}>
@@ -1183,10 +1168,6 @@ const COLLECTIONS = [
   {key:"recipes",name:"Recipes",singular:"recipe",color:"#FFD5BF",icon:"🍳",
     fixed:[],
     optional:[{key:"change",label:"Change I made",multiline:true},{key:"link",label:"Recipe link",type:"url"}]},
-  {key:"gifts",name:"Gift ideas",singular:"gift idea",color:"#FBD0D0",icon:"🎁",
-    fixed:[],
-    optional:[{key:"status",label:"Status",options:["Idea","Bought","Given"]},{key:"price",label:"Price"},{key:"link",label:"Link",type:"url"}],
-    people:{type:"Gift for",label:"Gift for"}},
 ];
 function collectionDef(key){return COLLECTIONS.find(c=>c.key===key);}
 function collectionNodeId(key){return "col_"+key;}
@@ -1203,7 +1184,8 @@ function FieldInput({f,value,onChange,autoFocus}){
 // ===== Item Card =====
 function ItemCard({item,allNodes,allLinks,onClose,onNavigate,onUpdate,onAddNote,onEditNote,onDeleteNote,onLinkPerson,onUnlinkPerson,onDelete,isSidePanel,saving}){
   const[editingNote,setEditingNote]=useState(null);const[editNoteText,setEditNoteText]=useState("");const[editNoteDate,setEditNoteDate]=useState("");
-  const def=collectionDef(item.collection)||{name:"Item",singular:"item",color:"#D9C3F4",icon:"•",fixed:[],optional:[]};
+  const baseDef=collectionDef(item.collection)||{name:"Item",singular:"item",color:"#D9C3F4",icon:"•",fixed:[],optional:[]};
+  const def={...baseDef,color:allNodes.find(n=>n.id===collectionNodeId(item.collection))?.color||baseDef.color};
   const[editing,setEditing]=useState(false);
   const[draft,setDraft]=useState(null);
   const[showAddField,setShowAddField]=useState(false);
@@ -1345,6 +1327,27 @@ function AddItemModal({collectionKey,onSave,onCancel}){
   );
 }
 
+// ===== Collection color picker =====
+function CollectionColorSheet({node,onPick,onClose}){
+  return(
+    <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(61,32,48,0.25)",backdropFilter:"blur(4px)",zIndex:30,display:"flex",alignItems:"flex-end"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",background:P.surface,borderRadius:"28px 28px 0 0",border:`1.5px solid ${P.border}`,borderBottom:"none",boxShadow:`0 -4px 24px ${P.shadow}`,padding:"12px 22px 40px"}}>
+        <div style={{width:40,height:4,background:P.handleBar,borderRadius:2,margin:"0 auto 16px"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
+          <div style={{width:44,height:44,borderRadius:14,background:node.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{node.icon}</div>
+          <div><div style={{fontSize:17,fontWeight:700,color:P.text}}>{node.name}</div><div style={{fontSize:12,color:P.muted,marginTop:2}}>Pick a color</div></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(8,1fr)",gap:10,marginBottom:18}}>
+          {CAT_PALETTE.map(c=>(
+            <div key={c} onClick={()=>{onPick(node.id,c);onClose();}} style={{width:"100%",aspectRatio:"1",borderRadius:"50%",background:c,border:`2px solid ${node.color===c?"#3D2030":"transparent"}`,cursor:"pointer",transform:node.color===c?"scale(1.18)":"scale(1)"}}/>
+          ))}
+        </div>
+        <button onClick={onClose} style={{...pbtn("secondary"),width:"100%"}}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 // ===== Places Map =====
 function loadLeaflet(){
   if(window.L)return Promise.resolve(window.L);
@@ -1468,6 +1471,7 @@ function MainApp(){
   const[activeItemId,setActiveItemId]=useState(null);
   const[addItemFor,setAddItemFor]=useState(null);
   const[showPlacesMap,setShowPlacesMap]=useState(false);
+  const[colorSheetNode,setColorSheetNode]=useState(null);
 
   useEffect(()=>{const el=containerRef.current;if(!el)return;const obs=new ResizeObserver(entries=>{const{width,height}=entries[0].contentRect;setDims({width,height});});obs.observe(el);return()=>obs.disconnect();},[]);
 
@@ -1485,7 +1489,8 @@ function MainApp(){
       }));
       const meNode={id:"me",name:"You",type:"me"};
       // Collections: virtual root + Books/Places/Recipes, items from the Items sheet
-      const colNodes=[COLLECTIONS_ROOT,...COLLECTIONS.map(c=>({id:collectionNodeId(c.key),name:c.name,type:"collection",color:c.color,icon:c.icon,collectionKey:c.key}))];
+      let colColors={};try{colColors=JSON.parse((data.settings||{}).collectionColors||"{}");}catch(e){}
+      const colNodes=[{...COLLECTIONS_ROOT,color:colColors.collections||COLLECTIONS_ROOT.color},...COLLECTIONS.map(c=>({id:collectionNodeId(c.key),name:c.name,type:"collection",color:colColors[collectionNodeId(c.key)]||c.color,icon:c.icon,collectionKey:c.key}))];
       const itemNodes=(data.items||[]).filter(it=>collectionDef(it.collection)).map(it=>({id:it.id,name:it.name||"(untitled)",type:"item",collection:it.collection,fields:it.fields||{},about:it.about||[],icon:collectionDef(it.collection).icon}));
       const colLinks=[{source:"me",target:"collections",type:"circle"},...COLLECTIONS.map(c=>({source:"collections",target:collectionNodeId(c.key),type:"circle"})),...itemNodes.map(it=>({source:collectionNodeId(it.collection),target:it.id,type:"item"}))];
       const allPeople=[meNode,...cats,...people,...colNodes,...itemNodes];
@@ -1507,7 +1512,7 @@ function MainApp(){
       const personRels=rels.filter(r=>!catIds.has(r.source)||!catIds.has(r.target));
       setLinks([...catLinks,...subCatLinks,...personRels,...peopleLinks,...colLinks]);
       setFieldDefs((data.fieldDefs||[]).map(f=>({...f,important:f.important===true||f.important==="TRUE"||f.important==="true"})));
-      const allReminders=getReminders(allPeople,data.fieldDefs||[],[...personRels,...colLinks]);
+      const allReminders=getReminders(allPeople,data.fieldDefs||[]);
       setActiveReminders(allReminders.filter(isReminderActive));
     }catch(err){setLoadError(err.message||"Couldn't reach your Google Sheet.");}
     finally{setLoading(false);}
@@ -1541,6 +1546,7 @@ function MainApp(){
   function onCenterTap(node){
     if(node.id==="me"){setShowMeCard(true);return;}
     if(node.type==="item"){setActiveItemId(node.id);return;}
+    if(node.type==="collection"){setColorSheetNode(node);return;}
     if(node.type==="person"){setActiveCardId(node.id);return;}
     if(node.type==="category"){setEditSheetNode(node);return;}
   }
@@ -1710,10 +1716,11 @@ function MainApp(){
       setAddItemFor(null);setNewNodeId(id);setTimeout(()=>setActiveItemId(id),100);setTimeout(()=>setNewNodeId(null),2000);
     }catch(e){console.error(e);alert("Couldn't save: "+e.message);}finally{setSaving(false);}
   }
-  async function addGiftFor(personId,name){
-    setSaving(true);
-    try{const id=await createItem("gifts",name,{status:"Idea"});await linkItemPerson(id,personId,"Gift for");}
-    catch(e){console.error(e);alert("Couldn't save: "+e.message);}finally{setSaving(false);}
+  async function changeCollectionColor(id,color){
+    const next=nodes.map(n=>n.id===id?{...n,color}:n);
+    setNodes(next);
+    const colors={};next.filter(n=>n.type==="collection").forEach(n=>{colors[n.id]=n.color;});
+    setSaving(true);try{await callBackend("setSetting",{settingKey:"collectionColors",value:JSON.stringify(colors)});}catch(e){console.error(e);}finally{setSaving(false);}
   }
   async function updateItem(id,patch){
     setNodes(prev=>prev.map(n=>n.id===id?{...n,...patch}:n));
@@ -1773,7 +1780,7 @@ function MainApp(){
       {saving&&<div style={{position:"absolute",top:12,right:12,fontSize:11,color:P.muted,background:P.surface,padding:"4px 10px",borderRadius:8,zIndex:50,border:`1.5px solid ${P.border}`,boxShadow:`0 1px 4px ${P.shadow}`}}>Saving…</div>}
 
       {/* Reminder Banner */}
-      {activeReminders.length>0&&<ReminderBanner reminders={activeReminders.map(r=>{if(r.type!=="birthday")return r;const g=links.filter(l=>l.type==="Gift for"&&(l.target===r.personId||l.source===r.personId)).length;return{...r,sub:g?`🎁 ${g} gift idea${g===1?"":"s"} saved — tap to see`:"No gift ideas yet — tap to add one"};})} onDismiss={handleDismissReminder} onSnooze={handleSnoozeReminder} onPersonClick={(personId)=>{setActiveCardId(personId);}}/>}
+      {activeReminders.length>0&&<ReminderBanner reminders={activeReminders} onDismiss={handleDismissReminder} onSnooze={handleSnoozeReminder} onPersonClick={(personId)=>{setActiveCardId(personId);}}/>}
 
       {/* Top bar */}
       <div style={{position:"absolute",top:activeReminders.length>0?bannerHeight:0,left:0,right:panelWidth,padding:"14px 20px",display:"flex",alignItems:"center",gap:10,background:`linear-gradient(to bottom, ${P.gradTop} 60%, transparent)`,zIndex:10,transition:"top 0.3s ease"}}>
@@ -1783,6 +1790,7 @@ function MainApp(){
           {isHome&&<img src={KITH_LOGO} alt="Kith" style={{height:32,width:"auto",mixBlendMode:"multiply",opacity:0.92}}/>}
         </div>
         {centerNode?.type==="person"&&<button onClick={()=>setActiveCardId(centerNode.id)} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.muted,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>👤</button>}
+        {centerNode?.type==="collection"&&<button aria-label="Color" onClick={()=>setColorSheetNode(centerNode)} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.text,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>🎨</button>}
         {centerColKey==="places"&&<button aria-label="Map" onClick={()=>setShowPlacesMap(true)} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.text,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>🗺</button>}
         {centerColKey&&<button onClick={()=>setAddItemFor(centerColKey)} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.text,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>+</button>}
         {centerNode?.type!=="category"&&centerNode?.type!=="collection"&&centerNode?.type!=="item"&&<button onClick={()=>setAddModalCenter(centerNode||nodes.find(n=>n.id==="me"))} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.text,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>+</button>}
@@ -1889,8 +1897,9 @@ function MainApp(){
 
       {showUncategorized&&<UncategorizedDrawer people={uncategorizedPeople} allNodes={nodes} allLinks={links} onClose={()=>setShowUncategorized(false)} onSelectPerson={id=>{setActiveCardId(id);}}/>}
       {showMeCard&&(<><div onClick={()=>setShowMeCard(false)} style={{position:"absolute",inset:0,zIndex:15}}/><MeCard me={meNode} stats={stats} allNodes={nodes} onClose={()=>setShowMeCard(false)} onUpdate={updatePerson}/></>)}
-      {activePerson&&(<>{!isDesktop&&<div onClick={()=>setActiveCardId(null)} style={{position:"absolute",inset:0,zIndex:15,background:"rgba(61,32,48,0.15)"}}/>}<PersonCard person={nodes.find(n=>n.id===activeCardId)||activePerson} allNodes={nodes} allLinks={links} fieldDefs={fieldDefs} onClose={()=>setActiveCardId(null)} onNavigate={navigateTo} onUpdate={updatePerson} onAddFieldDef={addFieldDef} onDelete={deletePerson} onAddGift={addGiftFor} isSidePanel={isDesktop} saving={saving}/></>)}
+      {activePerson&&(<>{!isDesktop&&<div onClick={()=>setActiveCardId(null)} style={{position:"absolute",inset:0,zIndex:15,background:"rgba(61,32,48,0.15)"}}/>}<PersonCard person={nodes.find(n=>n.id===activeCardId)||activePerson} allNodes={nodes} allLinks={links} fieldDefs={fieldDefs} onClose={()=>setActiveCardId(null)} onNavigate={navigateTo} onUpdate={updatePerson} onAddFieldDef={addFieldDef} onDelete={deletePerson} isSidePanel={isDesktop} saving={saving}/></>)}
       {activeItem&&!activePerson&&(<>{!isDesktop&&<div onClick={()=>setActiveItemId(null)} style={{position:"absolute",inset:0,zIndex:15,background:"rgba(61,32,48,0.15)"}}/>}<ItemCard key={activeItem.id} item={activeItem} allNodes={nodes} allLinks={links} onClose={()=>setActiveItemId(null)} onNavigate={navigateTo} onUpdate={updateItem} onAddNote={addItemNote} onEditNote={editNote} onDeleteNote={deleteNote} onLinkPerson={linkItemPerson} onUnlinkPerson={unlinkItemPerson} onDelete={deleteItem} isSidePanel={isDesktop} saving={saving}/></>)}
+      {colorSheetNode&&<CollectionColorSheet node={nodes.find(n=>n.id===colorSheetNode.id)||colorSheetNode} onPick={changeCollectionColor} onClose={()=>setColorSheetNode(null)}/>}
       {showPlacesMap&&<PlacesMap places={nodes.filter(n=>n.type==="item"&&n.collection==="places")} onClose={()=>setShowPlacesMap(false)} onOpen={id=>{setShowPlacesMap(false);setActiveItemId(id);}} onSaveCoords={(id,c)=>{const it=nodes.find(n=>n.id===id);if(it)updateItem(id,{fields:{...(it.fields||{}),lat:String(c.lat),lng:String(c.lng)}});}}/>}
       {addItemFor&&<AddItemModal collectionKey={addItemFor} onSave={addItem} onCancel={()=>setAddItemFor(null)}/>}
       {showQuickNote&&<QuickNoteModal allNodes={nodes} onSave={saveQuickNote} onCancel={()=>setShowQuickNote(false)}/>}
