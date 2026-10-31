@@ -122,12 +122,7 @@ function getAllData_() {
     people: peopleFull,
     relationships,
     fieldDefs,
-    categories: categories.length ? categories : [
-      { name: "Work", imageUrl: "" },
-      { name: "Family", imageUrl: "" },
-      { name: "Friends", imageUrl: "" },
-      { name: "Clients", imageUrl: "" },
-    ],
+    categories,
   };
 }
 
