@@ -266,9 +266,19 @@ function getNeighborGraph(centerId,allNodes,allLinks){
 }
 function getTwoLevelGraph(centerId,allNodes,allLinks){
   const l1=new Set([centerId]);const l2=new Set();const used=[];
+  const isHome=centerId==="me";
   allLinks.forEach(l=>{
-    if(l.source===centerId&&l.target!=="me"){l1.add(l.target);used.push(l);}
-    if(l.target===centerId&&l.source!=="me"){l1.add(l.source);used.push(l);}
+    if(l.source===centerId&&l.target!=="me"){
+      // From home, only categories become L1; people go to L2 later
+      const targetNode=allNodes.find(n=>n.id===l.target);
+      if(isHome&&targetNode?.type==="person"){l2.add(l.target);used.push(l);}
+      else{l1.add(l.target);used.push(l);}
+    }
+    if(l.target===centerId&&l.source!=="me"){
+      const sourceNode=allNodes.find(n=>n.id===l.source);
+      if(isHome&&sourceNode?.type==="person"){l2.add(l.source);used.push(l);}
+      else{l1.add(l.source);used.push(l);}
+    }
   });
   allLinks.forEach(l=>{
     const inL1s=l1.has(l.source)&&l.source!==centerId;
