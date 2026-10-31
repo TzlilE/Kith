@@ -265,19 +265,19 @@ function getNeighborGraph(centerId,allNodes,allLinks){
   return{neighborNodes:filteredNodes,neighborLinks:nLinks.filter(l=>filteredIds.has(l.source)&&filteredIds.has(l.target)),secondLevelIds:new Set()};
 }
 function getTwoLevelGraph(centerId,allNodes,allLinks){
-  const l1=new Set([centerId]);const l2=new Set();const used=[];
+  const l1=new Set([centerId]);const l2=new Set();const usedSet=new Set();const used=[];
   const isHome=centerId==="me";
+  function addLink(l){if(!usedSet.has(l)){usedSet.add(l);used.push(l);}}
   allLinks.forEach(l=>{
     if(l.source===centerId&&l.target!=="me"){
       const targetNode=allNodes.find(n=>n.id===l.target);
-      // From home, people linked directly to me are skipped here — they'll appear via their category in L2 pass
-      if(isHome&&targetNode?.type==="person"){/* skip — will be picked up via category */}
-      else{l1.add(l.target);used.push(l);}
+      if(isHome&&targetNode?.type==="person"){/* skip — shown via category */}
+      else{l1.add(l.target);addLink(l);}
     }
     if(l.target===centerId&&l.source!=="me"){
       const sourceNode=allNodes.find(n=>n.id===l.source);
       if(isHome&&sourceNode?.type==="person"){/* skip */}
-      else{l1.add(l.source);used.push(l);}
+      else{l1.add(l.source);addLink(l);}
     }
   });
   allLinks.forEach(l=>{
@@ -286,18 +286,14 @@ function getTwoLevelGraph(centerId,allNodes,allLinks){
     if(inL1s&&!l1.has(l.target)&&l.target!=="me"){
       const tn=allNodes.find(n=>n.id===l.target);
       const parentNode=allNodes.find(n=>n.id===l.source);
-      // Never show sub-persons (person→person links)
       if(parentNode?.type==="person"&&tn?.type==="person")return;
-      // From home: don't add L2 via a direct me→person link (person must go through its category)
-      if(isHome&&l.source===centerId)return;
-      l2.add(l.target);if(!used.includes(l))used.push(l);
+      l2.add(l.target);addLink(l);
     }
     if(inL1t&&!l1.has(l.source)&&l.source!=="me"){
       const sn=allNodes.find(n=>n.id===l.source);
       const parentNode=allNodes.find(n=>n.id===l.target);
       if(parentNode?.type==="person"&&sn?.type==="person")return;
-      if(isHome&&l.target===centerId)return;
-      l2.add(l.source);if(!used.includes(l))used.push(l);
+      l2.add(l.source);addLink(l);
     }
   });
   const all=new Set([...l1,...l2]);
