@@ -107,20 +107,19 @@ function connColor(type){
   return t?t.color:null;
 }
 
-// 16-color palette swatches for category picker
+// 24-color palette for the color pickers (3 rows: cool, pink-red, warm-green)
 const CAT_PALETTE = [
+  "#A8D8D8","#7FB7B2","#B9D4EC","#8FB8DE","#C5CAE9","#9FA8DA","#D9C3F4","#BD9CE2",
+  "#B27CDB","#D98BA6","#E8B4C8","#FBD0D0","#F39393","#D4A59A","#EBA076","#FFD5BF",
+  "#F6C28B","#F5D982","#D9AA48","#C7A27C","#EEDCBD","#B5C99A","#90C29E","#C8E6D1"
+];
+// Auto-colors for things without a chosen color keep the original 16 list,
+// so nobody's existing color shifts when the picker palette changes
+const HASH_PALETTE = [
   "#B9D4EC","#B27CDB","#D9C3F4","#F39393",
   "#FBD0D0","#D9AA48","#F5D982","#90C29E",
   "#C8E6D1","#EBA076","#FFD5BF","#FAF6EB",
   "#FAF3E1","#EEDCBD","#D6AA44","#BD9CE2"
-];
-
-// Stroke variants for swatches (slightly darker)
-const CAT_PALETTE_STROKE = [
-  "#90B8E0","#9050C0","#B8A0E0","#D06060",
-  "#E09898","#B08020","#C8A830","#60A070",
-  "#90C29E","#C07040","#E0A070","#E0D090",
-  "#D8C060","#C8A870","#A07820","#9060C0"
 ];
 
 // Default category colors map
@@ -132,7 +131,7 @@ const DEFAULT_CAT_COLORS = {
 
 function hashColor(id) {
   let h=0; for(let i=0;i<id.length;i++) h=(h*31+id.charCodeAt(i))&0xFFFFFF;
-  return CAT_PALETTE[Math.abs(h)%CAT_PALETTE.length];
+  return HASH_PALETTE[Math.abs(h)%HASH_PALETTE.length];
 }
 // Luminance-based text color: dark text on light bg, white on dark/saturated bg
 function textOnColor(hex) {
@@ -934,7 +933,7 @@ function QuickNoteModal({allNodes,onSave,onCancel}){
 // ===== Add Category Modal (with 16-color picker) =====
 function AddCategoryModal({onSave,onCancel}){
   const[name,setName]=useState("");
-  const[selectedColor,setSelectedColor]=useState(CAT_PALETTE[2]); // default #D9C3F4
+  const[selectedColor,setSelectedColor]=useState("#D9C3F4");
   const suggestions=["Friends","Family","Work","School","Community","Clients","Personal","Health"];
   return(
     <div onClick={onCancel} style={{position:"absolute",inset:0,background:"rgba(61,32,48,0.3)",backdropFilter:"blur(4px)",zIndex:30,display:"flex",alignItems:"flex-end"}}>
