@@ -283,8 +283,19 @@ function getTwoLevelGraph(centerId,allNodes,allLinks){
   allLinks.forEach(l=>{
     const inL1s=l1.has(l.source)&&l.source!==centerId;
     const inL1t=l1.has(l.target)&&l.target!==centerId;
-    if(inL1s&&!l1.has(l.target)&&l.target!=="me"){l2.add(l.target);if(!used.includes(l))used.push(l);}
-    if(inL1t&&!l1.has(l.source)&&l.source!=="me"){l2.add(l.source);if(!used.includes(l))used.push(l);}
+    if(inL1s&&!l1.has(l.target)&&l.target!=="me"){
+      const tn=allNodes.find(n=>n.id===l.target);
+      // Never show sub-persons (people whose parent is a person, not a category)
+      const parentNode=allNodes.find(n=>n.id===l.source);
+      if(parentNode?.type==="person"&&tn?.type==="person")return;
+      l2.add(l.target);if(!used.includes(l))used.push(l);
+    }
+    if(inL1t&&!l1.has(l.source)&&l.source!=="me"){
+      const sn=allNodes.find(n=>n.id===l.source);
+      const parentNode=allNodes.find(n=>n.id===l.target);
+      if(parentNode?.type==="person"&&sn?.type==="person")return;
+      l2.add(l.source);if(!used.includes(l))used.push(l);
+    }
   });
   const all=new Set([...l1,...l2]);
   // From home: hide persons/sub-cats that belong under a category
