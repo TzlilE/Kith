@@ -344,15 +344,19 @@ function computeLayout(centerId,allNodes,allLinks,width,height,twoLevel,prevPosi
     for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
       const a=ids[i],b=ids[j];if(!pos[a]||!pos[b])continue;
       const dx=pos[b].x-pos[a].x,dy=pos[b].y-pos[a].y;
-      const dist=Math.sqrt(dx*dx+dy*dy)||1;const force=(2400*alpha)/(dist*dist);
+      const dist=Math.sqrt(dx*dx+dy*dy)||1;
+      // L2 nodes repel each other less so they stay near their parent
+      const isAL2=secondLevelIds.has(a),isBL2=secondLevelIds.has(b);
+      const repStr=(isAL2||isBL2)?600:2400;
+      const force=(repStr*alpha)/(dist*dist);
       f[a].fx-=(dx/dist)*force;f[a].fy-=(dy/dist)*force;f[b].fx+=(dx/dist)*force;f[b].fy+=(dy/dist)*force;
     }
     neighborLinks.forEach(l=>{
       const a=l.source,b=l.target;if(!pos[a]||!pos[b])return;
       const isL2link=secondLevelIds.has(a)||secondLevelIds.has(b);
-      // L2 nodes stay close to their parent; L1 nodes spread from center
-      const targetDist=isL2link?70:Math.min(width,height)*0.28;
-      const springStr=isL2link?0.06:0.018;
+      // L2 nodes stay very close to their parent; L1 nodes spread from center
+      const targetDist=isL2link?55:Math.min(width,height)*0.28;
+      const springStr=isL2link?0.18:0.018;
       const dx=pos[b].x-pos[a].x,dy=pos[b].y-pos[a].y;
       const dist=Math.sqrt(dx*dx+dy*dy)||1;const force=(dist-targetDist)*springStr*alpha;
       const fx=(dx/dist)*force,fy=(dy/dist)*force;
