@@ -269,14 +269,14 @@ function getTwoLevelGraph(centerId,allNodes,allLinks){
   const isHome=centerId==="me";
   allLinks.forEach(l=>{
     if(l.source===centerId&&l.target!=="me"){
-      // From home, only categories become L1; people go to L2 later
       const targetNode=allNodes.find(n=>n.id===l.target);
-      if(isHome&&targetNode?.type==="person"){l2.add(l.target);used.push(l);}
+      // From home, people linked directly to me are skipped here — they'll appear via their category in L2 pass
+      if(isHome&&targetNode?.type==="person"){/* skip — will be picked up via category */}
       else{l1.add(l.target);used.push(l);}
     }
     if(l.target===centerId&&l.source!=="me"){
       const sourceNode=allNodes.find(n=>n.id===l.source);
-      if(isHome&&sourceNode?.type==="person"){l2.add(l.source);used.push(l);}
+      if(isHome&&sourceNode?.type==="person"){/* skip */}
       else{l1.add(l.source);used.push(l);}
     }
   });
