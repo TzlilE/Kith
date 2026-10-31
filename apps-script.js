@@ -17,13 +17,14 @@
  *      sheet with personId = item id; "Recommend to" links live in
  *      Relationships with personA = item id.)
  *
- * SECURITY: every request must include a "key" matching SECRET_KEY below.
- * Change this to something only you know before deploying.
- * SECRET_KEY = "Dem0of198NQlio"
- * APP_PASSWORD = "1469"
+ * SECURITY: secrets are NOT stored in this file (the repo is public).
+ * Set them in Apps Script: Project Settings (gear) > Script Properties:
+ *   APP_KEY         = the password you type in the app's lock screen
+ *   CLAUDE_API_KEY  = your Anthropic API key (for the AI chat)
+ * Every request must include "key" = APP_KEY.
  */
 
-const SECRET_KEY = "Dem0of198NQlio"; // <-- change this before deploying
+function prop_(name) { return PropertiesService.getScriptProperties().getProperty(name) || ""; }
 const DRIVE_FOLDER_NAME = "PeopleAppPhotos"; // created automatically in your Drive
 
 // ---------- Sheet helpers ----------
@@ -34,8 +35,24 @@ function getSheet_(name, headers) {
   if (!sheet) {
     sheet = ss.insertSheet(name);
     sheet.appendRow(headers);
+    return sheet;
   }
+  // Add any header that an older sheet is missing (e.g. "color" on Categories)
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const current = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  headers.forEach((h) => {
+    if (current.indexOf(h) === -1) {
+      sheet.getRange(1, sheet.getLastColumn() + 1).setValue(h);
+      current.push(h);
+    }
+  });
   return sheet;
+}
+
+// Column number (1-based) of a header, read from the sheet itself
+function colOf_(sheet, header) {
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  return headers.indexOf(header) + 1;
 }
 
 function sheetToObjects_(sheet) {
@@ -52,7 +69,8 @@ function sheetToObjects_(sheet) {
 }
 
 function appendObject_(sheet, headers, obj) {
-  const row = headers.map((h) => (obj[h] !== undefined ? obj[h] : ""));
+  const real = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const row = real.map((h) => (obj[h] !== undefined ? obj[h] : ""));
   sheet.appendRow(row);
 }
 
@@ -77,7 +95,7 @@ const RELATIONSHIPS_HEADERS = ["id", "personA", "personB", "type"];
 const ABOUT_HEADERS = ["id", "personId", "date", "text"];
 const FIELD_DEFS_HEADERS = ["id", "label", "type", "important"];
 const FIELD_VALUES_HEADERS = ["id", "personId", "fieldId", "value"];
-const CATEGORIES_HEADERS = ["name", "imageUrl"];
+const CATEGORIES_HEADERS = ["name", "imageUrl", "color"];
 const ITEMS_HEADERS = ["id", "collection", "name", "fields"];
 
 function peopleSheet_() { return getSheet_("People", PEOPLE_HEADERS); }
@@ -247,8 +265,47 @@ function addAbout_(params) {
   return { id };
 }
 
+function updateAbout_(params) {
+  const sheet = aboutSheet_();
+  const rowIndex = findRowIndexById_(sheet, "id", params.id);
+  if (rowIndex === -1) return { error: "Note not found" };
+  if (params.text !== undefined) sheet.getRange(rowIndex, colOf_(sheet, "text")).setValue(params.text);
+  if (params.date !== undefined) sheet.getRange(rowIndex, colOf_(sheet, "date")).setValue(params.date);
+  return { ok: true };
+}
+
+function deleteAbout_(params) {
+  const sheet = aboutSheet_();
+  const rowIndex = findRowIndexById_(sheet, "id", params.id);
+  if (rowIndex !== -1) sheet.deleteRow(rowIndex);
+  return { ok: true };
+}
+
+// AI chat: the Anthropic key stays here on the server, never in the page
+function askClaude_(params) {
+  const apiKey = prop_("CLAUDE_API_KEY");
+  if (!apiKey) return { error: "CLAUDE_API_KEY is not set in Script Properties" };
+  const res = UrlFetchApp.fetch("https://api.anthropic.com/v1/messages", {
+    method: "post",
+    contentType: "application/json",
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    payload: JSON.stringify({
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      system: String(params.system || ""),
+      messages: [{ role: "user", content: String(params.message || "") }],
+    }),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  if (code !== 200) return { error: "Claude API error " + code };
+  const data = JSON.parse(res.getContentText());
+  return { text: (data.content && data.content[0] && data.content[0].text) || "" };
+}
+
 function addFieldDef_(params) {
-  const id = newId_("f");
+  // Use the id the app created, so values saved right away still match after reload
+  const id = params.id || newId_("f");
   appendObject_(fieldDefsSheet_(), FIELD_DEFS_HEADERS, {
     id,
     label: params.label || "",
@@ -276,7 +333,15 @@ function setFieldValue_(params) {
 }
 
 function addCategory_(params) {
-  appendObject_(categoriesSheet_(), CATEGORIES_HEADERS, { name: params.name, imageUrl: params.imageUrl || "" });
+  appendObject_(categoriesSheet_(), CATEGORIES_HEADERS, { name: params.name, imageUrl: params.imageUrl || "", color: params.color || "" });
+  return { ok: true };
+}
+
+function updateCategory_(params) {
+  const sheet = categoriesSheet_();
+  const rowIndex = findRowIndexById_(sheet, "name", params.id || params.name);
+  if (rowIndex === -1) return { error: "Category not found" };
+  if (params.color !== undefined) sheet.getRange(rowIndex, colOf_(sheet, "color")).setValue(params.color);
   return { ok: true };
 }
 
@@ -297,6 +362,14 @@ function renameCategory_(params) {
       const newCats = cats.map((c) => (c === params.oldName ? params.newName : c));
       peopleSheetRef.getRange(i + 1, catColIndex + 1).setValue(newCats.join(","));
     }
+  }
+  // Sub-category links in Relationships use the category name too
+  const relSheet = relationshipsSheet_();
+  const rdata = relSheet.getDataRange().getValues();
+  const aCol = rdata[0].indexOf("personA"), bCol = rdata[0].indexOf("personB");
+  for (let i = 1; i < rdata.length; i++) {
+    if (rdata[i][aCol] === params.oldName) relSheet.getRange(i + 1, aCol + 1).setValue(params.newName);
+    if (rdata[i][bCol] === params.oldName) relSheet.getRange(i + 1, bCol + 1).setValue(params.newName);
   }
   return { ok: true };
 }
@@ -328,10 +401,10 @@ function deletePerson_(params) {
 }
 
 function deleteCategory_(params) {
+  const key = params.id || params.name;
   const catSheet = categoriesSheet_();
   const data = catSheet.getDataRange().getValues();
   for (let i = data.length - 1; i >= 1; i--) {
-    const key = params.id || params.name;
     if (data[i][0] === key) catSheet.deleteRow(i + 1);
   }
   const peopleSheetRef = peopleSheet_();
@@ -347,8 +420,9 @@ function deleteCategory_(params) {
   // Also remove any relationships involving this category
   const relSheet = relationshipsSheet_();
   const rdata = relSheet.getDataRange().getValues();
+  const raCol = rdata[0].indexOf("personA"), rbCol = rdata[0].indexOf("personB");
   for (let i = rdata.length - 1; i >= 1; i--) {
-    if (rdata[i][0] === key || rdata[i][1] === key) relSheet.deleteRow(i + 1);
+    if (rdata[i][raCol] === key || rdata[i][rbCol] === key) relSheet.deleteRow(i + 1);
   }
   return { ok: true };
 }
@@ -433,13 +507,29 @@ function doPost(e) {
 }
 
 function handleRequest_(params) {
-  if (params.key !== SECRET_KEY) {
+  const appKey = prop_("APP_KEY");
+  if (!appKey || String(params.key) !== appKey) {
     return jsonResponse_({ error: "Unauthorized" });
   }
 
   try {
     let result;
     switch (params.action) {
+      case "ping":
+        result = { ok: true };
+        break;
+      case "askClaude":
+        result = askClaude_(params);
+        break;
+      case "updateAbout":
+        result = updateAbout_(params);
+        break;
+      case "deleteAbout":
+        result = deleteAbout_(params);
+        break;
+      case "updateCategory":
+        result = updateCategory_(params);
+        break;
       case "getAllData":
         result = getAllData_();
         break;

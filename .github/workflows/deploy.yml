@@ -15,12 +15,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Inject secrets into index.html
+      - name: Inject backend URL into index.html
+        # Only the Apps Script URL is injected. Passwords and API keys live in
+        # Apps Script > Project Settings > Script Properties, never in this page.
         run: |
           sed -i "s|%%APPS_SCRIPT_URL%%|${{ secrets.APPS_SCRIPT_URL }}|g" index.html
-          sed -i "s|%%SHEETS_KEY%%|${{ secrets.SHEETS_KEY }}|g" index.html
-          sed -i "s|%%APP_PASSWORD%%|${{ secrets.APP_PASSWORD }}|g" index.html
-          sed -i "s|%%CLAUDE_API_KEY%%|${{ secrets.CLAUDE_API_KEY }}|g" index.html
           # Inject build timestamp so browsers never serve a stale cached version
           BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           sed -i "s|%%BUILD_TIME%%|${BUILD_TIME}|g" index.html
