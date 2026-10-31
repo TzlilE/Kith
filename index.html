@@ -156,6 +156,10 @@ function personBaseColor(nodeId, allLinks, allNodes) {
     const cat = allNodes.find(n=>n.id===catId);
     return categoryColorFor(cat);
   }
+  // No category: borrow the color of a linked person who has one
+  const viaPerson=allLinks.find(l=>{const o=l.source===nodeId?l.target:l.target===nodeId?l.source:null;
+    return o&&allNodes.find(n=>n.id===o)?.type==="person"&&allLinks.some(m=>(m.target===o||m.source===o)&&allNodes.find(n=>n.id===(m.target===o?m.source:m.target))?.type==="category");});
+  if(viaPerson){const o=viaPerson.source===nodeId?viaPerson.target:viaPerson.source;return personBaseColor(o,allLinks.filter(l=>l!==viaPerson),allNodes);}
   return hashColor(nodeId);
 }
 function nodeMainColor(node, allLinks, allNodes) {
@@ -253,6 +257,22 @@ function hasCatParent(id,allNodes,allLinks){
     l.target===id&&l.source!=="me"&&allNodes.find(n=>n.id===l.source)?.type==="category"
   );
 }
+// A person "has a place" if they're in a category, or linked to a person who has a place
+function personInCategory(id,allNodes,allLinks){
+  return allLinks.some(l=>{const o=l.source===id?l.target:l.target===id?l.source:null;return o&&allNodes.find(n=>n.id===o)?.type==="category";});
+}
+function placedPeople(allNodes,allLinks){
+  const people=allNodes.filter(n=>n.type==="person");
+  const placed=new Set(people.filter(p=>personInCategory(p.id,allNodes,allLinks)).map(p=>p.id));
+  const isPerson=new Set(people.map(p=>p.id));
+  let changed=true;
+  while(changed){changed=false;allLinks.forEach(l=>{
+    if(!isPerson.has(l.source)||!isPerson.has(l.target))return;
+    if(placed.has(l.source)&&!placed.has(l.target)){placed.add(l.target);changed=true;}
+    else if(placed.has(l.target)&&!placed.has(l.source)){placed.add(l.source);changed=true;}
+  });}
+  return placed;
+}
 function getNeighborGraph(centerId,allNodes,allLinks){
   const nIds=new Set([centerId]);
   const nLinks=[];
@@ -293,9 +313,15 @@ function getTwoLevelGraph(centerId,allNodes,allLinks){
     if(!isHome){
       if(l1.has(l.source)&&l.source!==centerId&&!parents.has(l.source)&&!l1.has(l.target)&&l.target!=="me"){
         const pn=allNodes.find(n=>n.id===l.source),cn=allNodes.find(n=>n.id===l.target);
-        if(!cn||pn?.type==="person"&&cn.type==="person")return;
-        if(["category","collection"].includes(pn?.type)){l2.add(l.target);addLink(l);}
+        if(!cn)return;
+        if(["category","collection"].includes(pn?.type)){l2.add(l.target);addLink(l);return;}
       }
+      // A person without a category hangs behind the person they're linked to
+      [[l.source,l.target],[l.target,l.source]].forEach(([p,c])=>{
+        if(!l1.has(p)||p===centerId||l1.has(c)||l2.has(c)||c==="me")return;
+        const pn=allNodes.find(n=>n.id===p),cn=allNodes.find(n=>n.id===c);
+        if(pn?.type==="person"&&cn?.type==="person"&&!personInCategory(c,allNodes,allLinks)){l2.add(c);addLink(l);}
+      });
       return;
     }
     const inL1s=l1.has(l.source)&&l.source!==centerId;
@@ -760,6 +786,7 @@ function UncategorizedDrawer({people,allNodes,allLinks,onClose,onSelectPerson}){
         <div style={{padding:"8px 22px 14px",borderBottom:`1px solid ${P.borderSoft}`,flexShrink:0}}>
           <div style={{fontSize:16,fontWeight:700,color:P.text}}>👤 Uncategorized</div>
           <div style={{fontSize:12,color:P.muted,marginTop:2}}>{people.length} {people.length===1?"person":"people"} not in any category</div>
+          <div style={{fontSize:12,color:P.muted,marginTop:4}}>Tip: add them to a category, or connect them to someone (Edit → + Add connection)</div>
         </div>
         <div style={{overflowY:"auto",padding:"12px 22px 0",flex:1}}>
           {people.map(n=>{
@@ -1341,7 +1368,8 @@ function MainApp(){
   const meNode=nodes.find(n=>n.id==="me");
   const birthdays=upcomingBirthdays(nodes,30);
   const stats={people:nodes.filter(n=>n.type==="person").length,categories:nodes.filter(n=>n.type==="category").length,connections:links.filter(l=>l.type!=="circle"&&l.type!=="item"&&nodes.find(n=>n.id===l.source)?.type!=="item").length,about:nodes.filter(n=>n.type==="person").reduce((s,n)=>s+(n.about?.length||0),0)};
-  const uncategorizedPeople=nodes.filter(n=>{if(n.type!=="person")return false;return !links.some(l=>{const otherId=l.source===n.id?l.target:l.target===n.id?l.source:null;return otherId&&nodes.find(x=>x.id===otherId)?.type==="category";});});
+  const placedSet=placedPeople(nodes,links);
+  const uncategorizedPeople=nodes.filter(n=>n.type==="person"&&!placedSet.has(n.id));
   const activeItem=nodes.find(n=>n.id===activeItemId&&n.type==="item");
   const centerColKey=collectionKeyOfNode(centerNode);
   const panelWidth=isDesktop&&(activePerson||activeItem)?320:0;
