@@ -443,7 +443,7 @@ function Graph({centerId,allNodes,allLinks,onNodeTap,onCenterTap,width,height,tw
         const x1=sp.x+(dx/dist)*sr,y1=sp.y+(dy/dist)*sr;
         const x2=tp.x-(dx/dist)*tr,y2=tp.y-(dy/dist)*tr;
         const lc=connColor(l.type);
-        return<line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={isL2?P.dim:(lc||P.link)} strokeWidth={isL2?0.7:1.4} strokeOpacity={isL2?0.3:0.65} strokeLinecap="round"/>;
+        return<line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={isL2?(lc||P.link):(lc||P.link)} strokeWidth={isL2?1.0:1.4} strokeOpacity={isL2?0.5:0.65} strokeDasharray={isL2?"4,3":undefined} strokeLinecap="round"/>;
       })}
       {[...neighborNodes.filter(n=>secondLevelIds.has(n.id)),...neighborNodes.filter(n=>!secondLevelIds.has(n.id))].map(n=>{
         const p=positions[n.id];if(!p)return null;
