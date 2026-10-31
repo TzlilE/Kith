@@ -307,68 +307,138 @@ function getTwoLevelGraph(centerId,allNodes,allLinks){
 }
 
 // ===== Layout =====
+// Stable radial layout:
+//  - Every first-level node gets a fixed ANGLE around the center.
+//    The angle is saved in localStorage, so it is the same after refresh.
+//  - Children (sub-categories / people) fan out from their parent,
+//    in the same direction (away from the center), like branches.
+const LS_LAYOUT_ANGLES = "peopleapp_layout_angles_v1";
+function loadAngles(){try{return JSON.parse(localStorage.getItem(LS_LAYOUT_ANGLES)||"{}");}catch(e){return{};}}
+function saveAngles(a){try{localStorage.setItem(LS_LAYOUT_ANGLES,JSON.stringify(a));}catch(e){}}
+function hashAngle(str){let h=2166136261;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}return((h>>>0)/4294967296)*Math.PI*2;}
+const TAU=Math.PI*2;
+function normAngle(a){a%=TAU;return a<0?a+TAU:a;}
+
+// Spread angles so no two are closer than `gap`, but keep their order
+function spreadAngles(items,gap){
+  if(items.length<2)return;
+  const g=Math.min(gap,TAU/items.length*0.98);
+  for(let it=0;it<200;it++){
+    items.sort((a,b)=>a.angle-b.angle);
+    let moved=false;
+    for(let i=0;i<items.length;i++){
+      const a=items[i],b=items[(i+1)%items.length];
+      let diff=b.angle-a.angle;if(i===items.length-1)diff+=TAU;
+      if(diff<g-1e-4){const push=(g-diff)/2;a.angle=normAngle(a.angle-push);b.angle=normAngle(b.angle+push);moved=true;}
+    }
+    if(!moved)break;
+  }
+}
+
 function computeLayout(centerId,allNodes,allLinks,width,height,twoLevel,prevPositions){
   const{neighborNodes,neighborLinks,secondLevelIds}=twoLevel?getTwoLevelGraph(centerId,allNodes,allLinks):getNeighborGraph(centerId,allNodes,allLinks);
-  const pos={},vel={};
-  const cx=width/2,cy=height/2;
-  const pad=60;
-  // Build parent map for L2 nodes so they start near their parent
-  const l2ParentId={};
-  neighborLinks.forEach(l=>{
-    if(secondLevelIds.has(l.target)&&!secondLevelIds.has(l.source)&&l.source!==centerId)l2ParentId[l.target]=l.source;
-    if(secondLevelIds.has(l.source)&&!secondLevelIds.has(l.target)&&l.target!==centerId)l2ParentId[l.source]=l.target;
-  });
-  // First pass: place L1 nodes
-  neighborNodes.forEach(n=>{
-    if(n.id===centerId){pos[n.id]={x:cx,y:cy};}
-    else if(secondLevelIds.has(n.id)){/* L2 placed in second pass */}
-    else if(prevPositions&&prevPositions[n.id]){pos[n.id]={...prevPositions[n.id]};}
-    else{const angle=Math.random()*Math.PI*2;const dist=80+Math.random()*(Math.min(width,height)*0.38);pos[n.id]={x:Math.max(pad,Math.min(width-pad,cx+Math.cos(angle)*dist)),y:Math.max(pad+40,Math.min(height-pad-100,cy+Math.sin(angle)*dist))};}
-    vel[n.id]={vx:0,vy:0};
-  });
-  // Second pass: place L2 nodes near their parent
-  neighborNodes.forEach(n=>{
-    if(!secondLevelIds.has(n.id))return;
-    if(prevPositions&&prevPositions[n.id]){pos[n.id]={...prevPositions[n.id]};vel[n.id]={vx:0,vy:0};return;}
-    const pid=l2ParentId[n.id];
-    const base=pid&&pos[pid]?pos[pid]:{x:cx,y:cy};
-    const angle=Math.random()*Math.PI*2;const dist=40+Math.random()*60;
-    pos[n.id]={x:Math.max(pad,Math.min(width-pad,base.x+Math.cos(angle)*dist)),y:Math.max(pad+40,Math.min(height-pad-100,base.y+Math.sin(angle)*dist))};
-    vel[n.id]={vx:0,vy:0};
-  });
-  const ids=neighborNodes.map(n=>n.id);
-  const startPos={};ids.forEach(id=>{startPos[id]={...pos[id]};});
-  for(let step=0;step<400;step++){
-    const alpha=Math.pow(0.97,step);if(alpha<0.004)break;
-    const f={};ids.forEach(id=>{f[id]={fx:0,fy:0};});
-    for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
-      const a=ids[i],b=ids[j];if(!pos[a]||!pos[b])continue;
-      const dx=pos[b].x-pos[a].x,dy=pos[b].y-pos[a].y;
-      const dist=Math.sqrt(dx*dx+dy*dy)||1;
-      // L2 nodes repel each other less so they stay near their parent
-      const isAL2=secondLevelIds.has(a),isBL2=secondLevelIds.has(b);
-      const repStr=(isAL2||isBL2)?600:2400;
-      const force=(repStr*alpha)/(dist*dist);
-      f[a].fx-=(dx/dist)*force;f[a].fy-=(dy/dist)*force;f[b].fx+=(dx/dist)*force;f[b].fy+=(dy/dist)*force;
-    }
+  const pos={};
+  const cx=width/2,cy=height/2+10;
+  const padX=44,padTop=70,padBot=36;
+  const nodeIds=new Set(neighborNodes.map(n=>n.id));
+
+  // 1. First-level nodes (direct neighbours of the center)
+  const l1=neighborNodes.filter(n=>n.id!==centerId&&!secondLevelIds.has(n.id));
+
+  // 2. Children of each first-level node (only in two-level view)
+  const childrenOf={};const parentOf={};
+  if(twoLevel){
     neighborLinks.forEach(l=>{
-      const a=l.source,b=l.target;if(!pos[a]||!pos[b])return;
-      const isL2link=secondLevelIds.has(a)||secondLevelIds.has(b);
-      // L2 nodes stay very close to their parent; L1 nodes spread from center
-      const targetDist=isL2link?55:Math.min(width,height)*0.28;
-      const springStr=isL2link?0.18:0.018;
-      const dx=pos[b].x-pos[a].x,dy=pos[b].y-pos[a].y;
-      const dist=Math.sqrt(dx*dx+dy*dy)||1;const force=(dist-targetDist)*springStr*alpha;
-      const fx=(dx/dist)*force,fy=(dy/dist)*force;
-      if(a!==centerId){f[a].fx+=fx;f[a].fy+=fy;}if(b!==centerId){f[b].fx-=fx;f[b].fy-=fy;}
+      let p=null,c=null;
+      if(secondLevelIds.has(l.target)&&!secondLevelIds.has(l.source)&&l.source!==centerId){p=l.source;c=l.target;}
+      else if(secondLevelIds.has(l.source)&&!secondLevelIds.has(l.target)&&l.target!==centerId){p=l.target;c=l.source;}
+      if(p&&c&&!parentOf[c]){parentOf[c]=p;(childrenOf[p]=childrenOf[p]||[]).push(c);}
     });
+    // stable child order
+    Object.values(childrenOf).forEach(arr=>arr.sort((a,b)=>hashAngle(a)-hashAngle(b)));
+  }
+  const hasChildren=Object.keys(childrenOf).length>0;
+
+  // 3. Angles: saved angle if we have one, otherwise a fixed hash of the id
+  const saved=loadAngles();
+  const viewKey=centerId+"|";
+  const items=l1.map(n=>{
+    const k=viewKey+n.id;
+    return{id:n.id,angle:typeof saved[k]==="number"?saved[k]:hashAngle(n.id)};
+  });
+  // bigger gap for nodes that have a fan of children
+  spreadAngles(items,hasChildren?0.95:0.55);
+  items.forEach(it=>{saved[viewKey+it.id]=it.angle;});
+  saveAngles(saved);
+
+  // 4. Ring size (ellipse that fits the screen)
+  const childDist=twoLevel&&hasChildren?78:0;
+  const rx=Math.max(90,Math.min(width/2-padX-childDist-10,320));
+  const ry=Math.max(110,Math.min((height-padTop-padBot)/2-childDist-10,300));
+  const ringScale=l1.length<=2?0.85:1;
+
+  pos[centerId]={x:cx,y:cy};
+  const angleOf={};
+  items.forEach(it=>{
+    angleOf[it.id]=it.angle;
+    pos[it.id]={x:cx+Math.cos(it.angle)*rx*ringScale,y:cy+Math.sin(it.angle)*ry*ringScale};
+  });
+
+  // 5. Children fan out from their parent, pointing AWAY from the center
+  Object.entries(childrenOf).forEach(([pid,kids])=>{
+    const pp=pos[pid];if(!pp)return;
+    const base=Math.atan2(pp.y-cy,pp.x-cx);
+    const n=kids.length;
+    const spread=Math.min(Math.PI*0.9,0.55*(n-1)); // total fan width
+    const dist=childDist+Math.max(0,n-5)*6;
+    kids.forEach((cid,i)=>{
+      const a=n===1?base:base-spread/2+spread*(i/(n-1));
+      pos[cid]={x:pp.x+Math.cos(a)*dist,y:pp.y+Math.sin(a)*dist};
+    });
+  });
+  // L2 nodes without a known parent: put them on an outer ring
+  neighborNodes.forEach(n=>{
+    if(pos[n.id])return;
+    const a=hashAngle(n.id);
+    pos[n.id]={x:cx+Math.cos(a)*(rx+40),y:cy+Math.sin(a)*(ry+40)};
+  });
+
+  // 6. Small push-apart so circles don't overlap (deterministic, keeps directions)
+  const ids=neighborNodes.map(n=>n.id).filter(id=>id!==centerId);
+  const rad={};neighborNodes.forEach(n=>{rad[n.id]=getNodeRadius(n,centerId,secondLevelIds.has(n.id),allLinks);});
+  for(let it=0;it<40;it++){
+    for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
+      const a=ids[i],b=ids[j];
+      const dx=pos[b].x-pos[a].x,dy=pos[b].y-pos[a].y;
+      const d=Math.sqrt(dx*dx+dy*dy)||0.01;
+      const min=rad[a]+rad[b]+14;
+      if(d<min){
+        const push=(min-d)/2;
+        const wa=secondLevelIds.has(a)?1:0.3,wb=secondLevelIds.has(b)?1:0.3;
+        pos[a].x-=dx/d*push*wa;pos[a].y-=dy/d*push*wa;
+        pos[b].x+=dx/d*push*wb;pos[b].y+=dy/d*push*wb;
+      }
+    }
+    // keep away from the center circle
     ids.forEach(id=>{
-      if(id===centerId||!pos[id])return;
-      f[id].fx+=(cx-pos[id].x)*0.004*alpha;f[id].fy+=(cy-pos[id].y)*0.004*alpha;
-      vel[id].vx=(vel[id].vx+f[id].fx)*0.85;vel[id].vy=(vel[id].vy+f[id].fy)*0.85;
-      pos[id]={x:Math.max(pad,Math.min(width-pad,pos[id].x+vel[id].vx)),y:Math.max(pad+40,Math.min(height-pad-100,pos[id].y+vel[id].vy))};
+      const dx=pos[id].x-cx,dy=pos[id].y-cy;const d=Math.sqrt(dx*dx+dy*dy)||0.01;
+      const min=rad[centerId]+rad[id]+30;
+      if(d<min){pos[id].x=cx+dx/d*min;pos[id].y=cy+dy/d*min;}
     });
   }
+
+  // 7. Keep everything on screen
+  ids.forEach(id=>{
+    pos[id].x=Math.max(padX,Math.min(width-padX,pos[id].x));
+    pos[id].y=Math.max(padTop,Math.min(height-padBot,pos[id].y));
+  });
+
+  // Animation start: previous spot, or grow out from the parent / center
+  const startPos={};
+  neighborNodes.forEach(n=>{
+    if(prevPositions&&prevPositions[n.id])startPos[n.id]={...prevPositions[n.id]};
+    else{const p=parentOf[n.id]&&prevPositions?.[parentOf[n.id]];startPos[n.id]=p?{...p}:{x:cx,y:cy};}
+  });
   return{finalPos:pos,startPos,neighborNodes,neighborLinks,secondLevelIds};
 }
 
@@ -376,26 +446,30 @@ function useAnimatedLayout(centerId,allNodes,allLinks,width,height,twoLevel,newN
   const[positions,setPositions]=useState({});
   const frameRef=useRef(null);
   const[pulseScale,setPulseScale]=useState({});
-  const prevPosRef=useRef({});
+  const lastRef=useRef({key:null,pos:{}});
+  // re-run when the data changes too (new person / category), not only on navigation
+  const dataKey=allNodes.length+":"+allLinks.length+":"+allNodes.map(n=>n.id).join(",").length;
   useEffect(()=>{
     if(!width||!height)return;
-    // Seed prevPos from stablePosRef when returning to a view we've seen before
-    const seed=stablePosRef?.current&&Object.keys(stablePosRef.current).length?stablePosRef.current:prevPosRef.current;
+    const viewKey=centerId+"|"+twoLevel;
+    // same view (data changed) -> animate from where nodes are now; new view -> grow from center
+    const seed=lastRef.current.key===viewKey?lastRef.current.pos:null;
     const{finalPos,startPos,neighborNodes}=computeLayout(centerId,allNodes,allLinks,width,height,twoLevel,seed);
     const ids=neighborNodes.map(n=>n.id);
-    const duration=600;const start=performance.now();
-    function easeInOut(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
+    const duration=550;const start=performance.now();
+    function easeOut(t){return 1-Math.pow(1-t,3);}
     function animate(now){
-      const t=Math.min(1,(now-start)/duration);const e=easeInOut(t);const interp={};
-      ids.forEach(id=>{if(!startPos[id]||!finalPos[id]){interp[id]=finalPos[id];return;}interp[id]={x:startPos[id].x+(finalPos[id].x-startPos[id].x)*e,y:startPos[id].y+(finalPos[id].y-startPos[id].y)*e};});
+      const t=Math.min(1,(now-start)/duration);const e=easeOut(t);const interp={};
+      ids.forEach(id=>{const s=startPos[id],f=finalPos[id];interp[id]=s&&f?{x:s.x+(f.x-s.x)*e,y:s.y+(f.y-s.y)*e}:f;});
       setPositions(interp);
-      if(t<1){frameRef.current=requestAnimationFrame(animate);}
-      else{prevPosRef.current=finalPos;if(stablePosRef)stablePosRef.current=finalPos;}
+      lastRef.current={key:viewKey,pos:interp};
+      if(t<1)frameRef.current=requestAnimationFrame(animate);
+      else if(stablePosRef)stablePosRef.current=finalPos;
     }
     if(frameRef.current)cancelAnimationFrame(frameRef.current);
     frameRef.current=requestAnimationFrame(animate);
     return()=>{if(frameRef.current)cancelAnimationFrame(frameRef.current);};
-  },[centerId,width,height,twoLevel]);
+  },[centerId,width,height,twoLevel,dataKey]);
   useEffect(()=>{
     if(!newNodeId)return;
     let t=0;const iv=setInterval(()=>{t+=0.15;const scale=1+0.3*Math.sin(t)*Math.max(0,1-t/(Math.PI*3));setPulseScale(s=>({...s,[newNodeId]:scale}));if(t>Math.PI*3){setPulseScale(s=>({...s,[newNodeId]:1}));clearInterval(iv);}},30);
