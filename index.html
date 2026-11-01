@@ -424,9 +424,44 @@ function computeLayout(centerId,allNodes,allLinks,width,height,twoLevel,prevPosi
     return{id:n.id,angle:typeof saved[k]==="number"?saved[k]:hashAngle(n.id)};
   });
   // bigger gap for nodes that have a fan of children
-  spreadAngles(items,hasChildren?0.95:0.55);
-  items.forEach(it=>{saved[viewKey+it.id]=it.angle;});
-  saveAngles(saved);
+  const isHomeView=centerId==="me";
+  const ringOf={}; // per-node ring size (1 = normal)
+  if(isHomeView){
+    spreadAngles(items,hasChildren?0.95:0.55);
+    items.forEach(it=>{saved[viewKey+it.id]=it.angle;});
+    saveAngles(saved);
+  }else{
+    // Inside a group/person: parent group straight up, sub-groups beside it in
+    // the upper half, people (and items) close together in the lower half
+    const D=Math.PI/180;
+    const typeOf=id=>allNodes.find(n=>n.id===id)?.type;
+    const isGroup=id=>["category","collection"].includes(typeOf(id));
+    const parentSet=new Set(neighborLinks.filter(l=>l.target===centerId&&isGroup(l.source)).map(l=>l.source));
+    const byHash=(a,b)=>hashAngle(a.id)-hashAngle(b.id);
+    const parents=items.filter(it=>parentSet.has(it.id)).sort(byHash);
+    const groups=items.filter(it=>!parentSet.has(it.id)&&isGroup(it.id)).sort(byHash);
+    const others=items.filter(it=>!parentSet.has(it.id)&&!isGroup(it.id)).sort(byHash);
+    const top=[...parents,...groups];
+    if(top.length){
+      // parents take the middle slots, sub-groups fill both sides
+      const order=[];const mid=(top.length-1)/2;
+      const slots=top.map((_,i)=>i).sort((a,b)=>Math.abs(a-mid)-Math.abs(b-mid)||a-b);
+      parents.forEach((it,i)=>order[slots[i]]=it);
+      let gi=0;slots.slice(parents.length).sort((a,b)=>a-b).forEach(sl=>{order[sl]=groups[gi++];});
+      const span=others.length?Math.min(160,top.length===1?0:52*(top.length-1)):Math.min(300,top.length===1?0:60*(top.length-1));
+      order.forEach((it,i)=>{it.angle=(-90-span/2+(top.length===1?0:span*i/(top.length-1)))*D;});
+    }
+    if(others.length){
+      const n=others.length;
+      const step=n>10?16:n>6?22:30;                  // degrees between neighbours
+      const span=top.length?Math.min(150,step*(n-1)):Math.min(320,step*(n-1));
+      const mid=top.length?90:-90;
+      others.forEach((it,i)=>{
+        it.angle=(mid-span/2+(n===1?0:span*i/(n-1)))*D;
+        ringOf[it.id]=n>10?(i%2?1.0:0.72):0.8;       // closer to the center; two rows when crowded
+      });
+    }
+  }
 
   // 4. Ring size (ellipse that fits the screen)
   const childDist=twoLevel&&hasChildren?78:0;
@@ -438,7 +473,14 @@ function computeLayout(centerId,allNodes,allLinks,width,height,twoLevel,prevPosi
   const angleOf={};
   items.forEach(it=>{
     angleOf[it.id]=it.angle;
-    pos[it.id]={x:cx+Math.cos(it.angle)*rx*ringScale,y:cy+Math.sin(it.angle)*ry*ringScale};
+    if(isHomeView){
+      const rs=ringScale*(ringOf[it.id]||1);
+      pos[it.id]={x:cx+Math.cos(it.angle)*rx*rs,y:cy+Math.sin(it.angle)*ry*rs};
+    }else{
+      // compact circle inside groups, so lines stay short
+      const r=Math.max(120,Math.min(width/2-55,(height-padTop-padBot)/2-60,170))*(ringOf[it.id]||1);
+      pos[it.id]={x:cx+Math.cos(it.angle)*r,y:cy+Math.sin(it.angle)*r};
+    }
   });
 
   // 5. Children fan out from their parent, pointing AWAY from the center
