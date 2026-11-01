@@ -14,6 +14,8 @@
  *   - Categories         : name, imageUrl
  *   - Items              : id, collection, name, fields (JSON)
  *   - Settings           : key, value   (e.g. collectionColors as JSON)
+ *   - Tasks              : id, text, done, doneAt, createdAt
+ *     (done tasks are deleted automatically 2 days after being checked)
  *     (Collections: books / places / recipes. Item notes live in the About
  *      sheet with personId = item id; "Recommend to" links live in
  *      Relationships with personA = item id.)
@@ -99,6 +101,8 @@ const FIELD_VALUES_HEADERS = ["id", "personId", "fieldId", "value"];
 const CATEGORIES_HEADERS = ["name", "imageUrl", "color"];
 const ITEMS_HEADERS = ["id", "collection", "name", "fields"];
 const SETTINGS_HEADERS = ["key", "value"];
+const TASKS_HEADERS = ["id", "text", "done", "doneAt", "createdAt"];
+const TASK_KEEP_MS = 2 * 24 * 60 * 60 * 1000; // done tasks live 2 days
 
 function peopleSheet_() { return getSheet_("People", PEOPLE_HEADERS); }
 function relationshipsSheet_() { return getSheet_("Relationships", RELATIONSHIPS_HEADERS); }
@@ -108,6 +112,7 @@ function fieldValuesSheet_() { return getSheet_("FieldValues", FIELD_VALUES_HEAD
 function categoriesSheet_() { return getSheet_("Categories", CATEGORIES_HEADERS); }
 function itemsSheet_() { return getSheet_("Items", ITEMS_HEADERS); }
 function settingsSheet_() { return getSheet_("Settings", SETTINGS_HEADERS); }
+function tasksSheet_() { return getSheet_("Tasks", TASKS_HEADERS); }
 
 function parseFields_(v) {
   if (!v) return {};
@@ -159,6 +164,7 @@ function getAllData_() {
     about: aboutByPerson[it.id] || [],
   }));
 
+  const tasks = getTasks_();
   const settings = {};
   sheetToObjects_(settingsSheet_()).forEach((r) => { settings[r.key] = r.value; });
 
@@ -169,6 +175,7 @@ function getAllData_() {
     categories,
     items,
     settings,
+    tasks,
   };
 }
 
@@ -444,6 +451,64 @@ function setSetting_(params) {
   return { ok: true };
 }
 
+// ---------- To-do list ----------
+
+function isTrue_(v) { return v === true || v === "TRUE" || v === "true"; }
+
+// Returns all tasks, and deletes done tasks older than 2 days
+function getTasks_() {
+  const sheet = tasksSheet_();
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+  const h = data[0];
+  const c = (name) => h.indexOf(name);
+  const now = Date.now();
+  const out = [];
+  for (let i = data.length - 1; i >= 1; i--) {
+    const row = data[i];
+    if (row[c("id")] === "" || row[c("id")] === null) continue;
+    const done = isTrue_(row[c("done")]);
+    const doneAt = row[c("doneAt")] ? new Date(row[c("doneAt")]).getTime() : 0;
+    if (done && doneAt && now - doneAt > TASK_KEEP_MS) { sheet.deleteRow(i + 1); continue; }
+    out.unshift({
+      id: row[c("id")],
+      text: row[c("text")],
+      done: done,
+      doneAt: doneAt ? new Date(doneAt).toISOString() : "",
+      createdAt: row[c("createdAt")] ? new Date(row[c("createdAt")]).toISOString() : "",
+    });
+  }
+  return out;
+}
+
+function addTask_(params) {
+  const id = newId_("t");
+  appendObject_(tasksSheet_(), TASKS_HEADERS, {
+    id, text: params.text || "", done: "FALSE", doneAt: "", createdAt: new Date().toISOString(),
+  });
+  return { id };
+}
+
+function updateTask_(params) {
+  const sheet = tasksSheet_();
+  const rowIndex = findRowIndexById_(sheet, "id", params.id);
+  if (rowIndex === -1) return { error: "Task not found" };
+  if (params.text !== undefined) sheet.getRange(rowIndex, colOf_(sheet, "text")).setValue(params.text);
+  if (params.done !== undefined) {
+    const done = isTrue_(params.done);
+    sheet.getRange(rowIndex, colOf_(sheet, "done")).setValue(done ? "TRUE" : "FALSE");
+    sheet.getRange(rowIndex, colOf_(sheet, "doneAt")).setValue(done ? new Date().toISOString() : "");
+  }
+  return { ok: true };
+}
+
+function deleteTask_(params) {
+  const sheet = tasksSheet_();
+  const rowIndex = findRowIndexById_(sheet, "id", params.id);
+  if (rowIndex !== -1) sheet.deleteRow(rowIndex);
+  return { ok: true };
+}
+
 // ---------- Collections (books / places / recipes) ----------
 
 function addItem_(params) {
@@ -597,6 +662,15 @@ function handleRequest_(params) {
         break;
       case "deleteItem":
         result = deleteItem_(params);
+        break;
+      case "addTask":
+        result = addTask_(params);
+        break;
+      case "updateTask":
+        result = updateTask_(params);
+        break;
+      case "deleteTask":
+        result = deleteTask_(params);
         break;
       case "setSetting":
         result = setSetting_(params);

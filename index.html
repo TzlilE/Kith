@@ -1326,6 +1326,62 @@ function AddItemModal({collectionKey,onSave,onCancel}){
   );
 }
 
+// ===== To-do list =====
+const TASK_KEEP_MS=2*24*60*60*1000;
+function visibleTasks(tasks){
+  const now=Date.now();
+  const open=tasks.filter(t=>!t.done);
+  const done=tasks.filter(t=>t.done&&!(t.doneAt&&now-new Date(t.doneAt).getTime()>TASK_KEEP_MS))
+    .sort((a,b)=>new Date(b.doneAt||0)-new Date(a.doneAt||0));
+  return{open,done};
+}
+function TodoSheet({tasks,onAdd,onToggle,onEdit,onDelete,onClose}){
+  const[text,setText]=useState("");
+  const[editingId,setEditingId]=useState(null);const[editText,setEditText]=useState("");
+  const{open,done}=visibleTasks(tasks);
+  function add(){if(!text.trim())return;onAdd(text.trim());setText("");}
+  function saveEdit(t){const v=editText.trim();if(v&&v!==t.text)onEdit(t.id,v);setEditingId(null);}
+  function row(t){
+    const isEditing=editingId===t.id;
+    return(
+      <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 2px",borderBottom:`1px solid ${P.borderSoft}`,opacity:t.done?0.5:1}}>
+        <button aria-label={t.done?"Mark as not done":"Mark as done"} onClick={()=>onToggle(t.id,!t.done)}
+          style={{width:24,height:24,borderRadius:7,flexShrink:0,cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center",
+            background:t.done?P.muted:P.surface,border:`2px solid ${t.done?P.muted:P.border}`,color:"white",fontSize:14,fontWeight:700}}>{t.done?"✓":""}</button>
+        {isEditing
+          ?<><input value={editText} onChange={e=>setEditText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveEdit(t);if(e.key==="Escape")setEditingId(null);}} onBlur={()=>saveEdit(t)} autoFocus dir="auto" style={{...inp,flex:1,padding:"6px 10px"}}/>
+            <button aria-label="Delete task" onMouseDown={e=>{e.preventDefault();onDelete(t.id);setEditingId(null);}} style={{...pbtn("danger"),padding:"6px 10px",fontSize:13}}>Delete</button></>
+          :<div dir="auto" onClick={()=>{setEditingId(t.id);setEditText(t.text);}} style={{flex:1,fontSize:15,color:t.done?P.muted:P.text,textDecoration:t.done?"line-through":"none",cursor:"text",wordBreak:"break-word",lineHeight:1.4}}>{t.text}</div>}
+      </div>
+    );
+  }
+  return(
+    <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(61,32,48,0.25)",backdropFilter:"blur(4px)",zIndex:40,display:"flex",alignItems:"flex-end"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:560,margin:"0 auto",background:P.surface,borderRadius:"28px 28px 0 0",border:`1.5px solid ${P.border}`,borderBottom:"none",boxShadow:`0 -4px 24px ${P.shadow}`,padding:"12px 20px 32px",height:"82vh",display:"flex",flexDirection:"column"}}>
+        <div style={{width:40,height:4,background:P.handleBar,borderRadius:2,margin:"0 auto 14px"}}/>
+        <div style={{display:"flex",alignItems:"center",marginBottom:14}}>
+          <div style={{fontSize:18,fontWeight:700,color:P.text,flex:1}}>✓ To do{open.length>0&&<span style={{fontSize:13,color:P.muted,fontWeight:500,marginLeft:8}}>{open.length} left</span>}</div>
+          <button aria-label="Close" onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:P.muted,cursor:"pointer",padding:"0 4px"}}>×</button>
+        </div>
+        <div style={{display:"flex",gap:8,marginBottom:8}}>
+          <input value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} placeholder="Add a task…" dir="auto" style={{...inp,flex:1,fontSize:15}}/>
+          <button aria-label="Add task" onClick={add} style={{...pbtn("primary"),padding:"0 16px",fontSize:20,opacity:text.trim()?1:0.45}}>+</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",marginRight:-6,paddingRight:6}}>
+          {open.length===0&&done.length===0&&<div style={{textAlign:"center",color:P.muted,fontSize:14,padding:"40px 0"}}>Nothing to do. Add your first task above.</div>}
+          {open.length===0&&done.length>0&&<div style={{textAlign:"center",color:P.muted,fontSize:14,padding:"18px 0 8px"}}>All done 🎉</div>}
+          {open.map(row)}
+          {done.length>0&&<>
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:0.6,color:P.muted,textTransform:"uppercase",margin:"18px 0 2px"}}>Done</div>
+            {done.map(row)}
+            <div style={{fontSize:12,color:P.dim,textAlign:"center",padding:"12px 0 4px"}}>Done tasks disappear after 2 days</div>
+          </>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===== Collection color picker =====
 function CollectionColorSheet({node,onPick,onClose}){
   return(
@@ -1471,6 +1527,8 @@ function MainApp(){
   const[addItemFor,setAddItemFor]=useState(null);
   const[showPlacesMap,setShowPlacesMap]=useState(false);
   const[colorSheetNode,setColorSheetNode]=useState(null);
+  const[tasks,setTasks]=useState([]);const[showTodo,setShowTodo]=useState(false);
+  const taskIdRef=useRef({}); // temp id -> Promise<real id>, so quick taps after adding still work
 
   useEffect(()=>{const el=containerRef.current;if(!el)return;const obs=new ResizeObserver(entries=>{const{width,height}=entries[0].contentRect;setDims({width,height});});obs.observe(el);return()=>obs.disconnect();},[]);
 
@@ -1510,6 +1568,7 @@ function MainApp(){
       // Non-subcategory rels (person↔person)
       const personRels=rels.filter(r=>!catIds.has(r.source)||!catIds.has(r.target));
       setLinks([...catLinks,...subCatLinks,...personRels,...peopleLinks,...colLinks]);
+      setTasks((data.tasks||[]).map(t=>({...t,done:t.done===true||t.done==="TRUE"||t.done==="true"})));
       setFieldDefs((data.fieldDefs||[]).map(f=>({...f,important:f.important===true||f.important==="TRUE"||f.important==="true"})));
       const allReminders=getReminders(allPeople,data.fieldDefs||[]);
       setActiveReminders(allReminders.filter(isReminderActive));
@@ -1715,6 +1774,30 @@ function MainApp(){
       setAddItemFor(null);setNewNodeId(id);setTimeout(()=>setActiveItemId(id),100);setTimeout(()=>setNewNodeId(null),2000);
     }catch(e){console.error(e);alert("Couldn't save: "+e.message);}finally{setSaving(false);}
   }
+  // ===== To-do actions =====
+  function realTaskId(id){return taskIdRef.current[id]||Promise.resolve(id);}
+  async function addTask(text){
+    const tmp="tmp_"+Date.now();
+    setTasks(prev=>[{id:tmp,text,done:false,doneAt:"",createdAt:new Date().toISOString()},...prev]);
+    const p=callBackend("addTask",{text}).then(r=>r.id);taskIdRef.current[tmp]=p;
+    setSaving(true);
+    try{const id=await p;setTasks(prev=>prev.map(t=>t.id===tmp?{...t,id}:t));}
+    catch(e){console.error(e);setTasks(prev=>prev.filter(t=>t.id!==tmp));alert("Couldn't save the task");}
+    finally{setSaving(false);}
+  }
+  async function toggleTask(id,done){
+    setTasks(prev=>prev.map(t=>t.id===id?{...t,done,doneAt:done?new Date().toISOString():""}:t));
+    try{await callBackend("updateTask",{id:await realTaskId(id),done});}catch(e){console.error(e);}
+  }
+  async function editTask(id,text){
+    setTasks(prev=>prev.map(t=>t.id===id?{...t,text}:t));
+    try{await callBackend("updateTask",{id:await realTaskId(id),text});}catch(e){console.error(e);}
+  }
+  async function deleteTask(id){
+    setTasks(prev=>prev.filter(t=>t.id!==id));
+    try{await callBackend("deleteTask",{id:await realTaskId(id)});}catch(e){console.error(e);}
+  }
+  const openTaskCount=tasks.filter(t=>!t.done).length;
   async function changeCollectionColor(id,color){
     const next=nodes.map(n=>n.id===id?{...n,color}:n);
     setNodes(next);
@@ -1788,6 +1871,7 @@ function MainApp(){
           {!isHome&&breadcrumb.map((id,i)=>{const n=nodes.find(x=>x.id===id);const label=id==="me"?"kith":(n?.name?.split(" ")[0]||id);const isLast=i===breadcrumb.length-1;return(<span key={i} style={{display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>{isLast?<span style={{color:P.text,fontWeight:600}}>{label}</span>:<button onClick={()=>{setNavStack(breadcrumb.slice(0,i));setCenterId(id);setActiveCardId(null);setShowMeCard(false);}} style={{background:"none",border:"none",cursor:"pointer",color:P.muted,fontSize:13,padding:0,fontFamily:"inherit",textDecoration:"underline",textDecorationColor:P.border}}>{label}</button>}{!isLast&&<span style={{opacity:0.4}}>→</span>}</span>);})}
           {isHome&&<img src={KITH_LOGO} alt="Kith" style={{height:32,width:"auto",mixBlendMode:"multiply",opacity:0.92}}/>}
         </div>
+        <button aria-label="To do" onClick={()=>setShowTodo(true)} style={{position:"relative",width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.text,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`,flexShrink:0}}>✓{openTaskCount>0&&<span style={{position:"absolute",top:-5,right:-5,background:P.youStroke,color:"white",borderRadius:9,minWidth:16,height:16,padding:"0 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{openTaskCount}</span>}</button>
         {centerNode?.type==="person"&&<button onClick={()=>setActiveCardId(centerNode.id)} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.muted,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>👤</button>}
         {centerNode?.type==="collection"&&<button aria-label="Color" onClick={()=>setColorSheetNode(centerNode)} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.text,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>🎨</button>}
         {centerColKey==="places"&&<button aria-label="Map" onClick={()=>setShowPlacesMap(true)} style={{width:34,height:34,borderRadius:10,background:P.surface,border:`1.5px solid ${P.border}`,color:P.text,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 1px 4px ${P.shadow}`}}>🗺</button>}
@@ -1898,6 +1982,7 @@ function MainApp(){
       {showMeCard&&(<><div onClick={()=>setShowMeCard(false)} style={{position:"absolute",inset:0,zIndex:15}}/><MeCard me={meNode} stats={stats} allNodes={nodes} onClose={()=>setShowMeCard(false)} onUpdate={updatePerson}/></>)}
       {activePerson&&(<>{!isDesktop&&<div onClick={()=>setActiveCardId(null)} style={{position:"absolute",inset:0,zIndex:15,background:"rgba(61,32,48,0.15)"}}/>}<PersonCard person={nodes.find(n=>n.id===activeCardId)||activePerson} allNodes={nodes} allLinks={links} fieldDefs={fieldDefs} onClose={()=>setActiveCardId(null)} onNavigate={navigateTo} onUpdate={updatePerson} onAddFieldDef={addFieldDef} onDelete={deletePerson} isSidePanel={isDesktop} saving={saving}/></>)}
       {activeItem&&!activePerson&&(<>{!isDesktop&&<div onClick={()=>setActiveItemId(null)} style={{position:"absolute",inset:0,zIndex:15,background:"rgba(61,32,48,0.15)"}}/>}<ItemCard key={activeItem.id} item={activeItem} allNodes={nodes} allLinks={links} onClose={()=>setActiveItemId(null)} onNavigate={navigateTo} onUpdate={updateItem} onAddNote={addItemNote} onEditNote={editNote} onDeleteNote={deleteNote} onLinkPerson={linkItemPerson} onUnlinkPerson={unlinkItemPerson} onDelete={deleteItem} isSidePanel={isDesktop} saving={saving}/></>)}
+      {showTodo&&<TodoSheet tasks={tasks} onAdd={addTask} onToggle={toggleTask} onEdit={editTask} onDelete={deleteTask} onClose={()=>setShowTodo(false)}/>}
       {colorSheetNode&&<CollectionColorSheet node={nodes.find(n=>n.id===colorSheetNode.id)||colorSheetNode} onPick={changeCollectionColor} onClose={()=>setColorSheetNode(null)}/>}
       {showPlacesMap&&<PlacesMap places={nodes.filter(n=>n.type==="item"&&n.collection==="places")} onClose={()=>setShowPlacesMap(false)} onOpen={id=>{setShowPlacesMap(false);setActiveItemId(id);}} onSaveCoords={(id,c)=>{const it=nodes.find(n=>n.id===id);if(it)updateItem(id,{fields:{...(it.fields||{}),lat:String(c.lat),lng:String(c.lng)}});}}/>}
       {addItemFor&&<AddItemModal collectionKey={addItemFor} onSave={addItem} onCancel={()=>setAddItemFor(null)}/>}
