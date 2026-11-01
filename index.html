@@ -412,7 +412,8 @@ function computeLayout(centerId,allNodes,allLinks,width,height,twoLevel,prevPosi
       if(p&&c&&!parentOf[c]){parentOf[c]=p;(childrenOf[p]=childrenOf[p]||[]).push(c);}
     });
     // stable child order
-    Object.values(childrenOf).forEach(arr=>arr.sort((a,b)=>hashAngle(a)-hashAngle(b)));
+    const grp=id=>["category","collection"].includes(allNodes.find(n=>n.id===id)?.type)?0:1;
+    Object.values(childrenOf).forEach(arr=>arr.sort((a,b)=>grp(a)-grp(b)||hashAngle(a)-hashAngle(b)));
   }
   const hasChildren=Object.keys(childrenOf).length>0;
 
@@ -464,7 +465,7 @@ function computeLayout(centerId,allNodes,allLinks,width,height,twoLevel,prevPosi
   }
 
   // 4. Ring size (ellipse that fits the screen)
-  const childDist=twoLevel&&hasChildren?78:0;
+  const childDist=twoLevel&&hasChildren?(centerId==="me"?66:78):0;
   const rx=Math.max(90,Math.min(width/2-padX-childDist-10,320));
   const ry=Math.max(110,Math.min((height-padTop-padBot)/2-childDist-10,300));
   const ringScale=l1.length<=2?0.85:1;
@@ -488,8 +489,8 @@ function computeLayout(centerId,allNodes,allLinks,width,height,twoLevel,prevPosi
     const pp=pos[pid];if(!pp)return;
     const base=Math.atan2(pp.y-cy,pp.x-cx);
     const n=kids.length;
-    const spread=Math.min(Math.PI*0.9,0.55*(n-1)); // total fan width
-    const dist=childDist+Math.max(0,n-5)*6;
+    const spread=Math.min(Math.PI*0.9,(centerId==="me"?0.5:0.55)*(n-1)); // total fan width
+    const dist=childDist+Math.max(0,n-6)*5;
     kids.forEach((cid,i)=>{
       const a=n===1?base:base-spread/2+spread*(i/(n-1));
       pos[cid]={x:pp.x+Math.cos(a)*dist,y:pp.y+Math.sin(a)*dist};
@@ -510,7 +511,7 @@ function computeLayout(centerId,allNodes,allLinks,width,height,twoLevel,prevPosi
       const a=ids[i],b=ids[j];
       const dx=pos[b].x-pos[a].x,dy=pos[b].y-pos[a].y;
       const d=Math.sqrt(dx*dx+dy*dy)||0.01;
-      const min=rad[a]+rad[b]+14;
+      const min=rad[a]+rad[b]+(secondLevelIds.has(a)&&secondLevelIds.has(b)?10:14);
       if(d<min){
         const push=(min-d)/2;
         const wa=secondLevelIds.has(a)?1:0.3,wb=secondLevelIds.has(b)?1:0.3;
