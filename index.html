@@ -150,7 +150,6 @@ function calcAge(b){if(!b)return null;const bd=new Date(b);if(isNaN(bd.getTime()
 function toYMD(v){if(!v)return"";const s=String(v);if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;const d=new Date(s);if(isNaN(d.getTime()))return"";const z=n=>String(n).padStart(2,"0");return`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;}
 function formatDate(iso){if(!iso)return"";const d=new Date(iso);if(isNaN(d.getTime()))return iso;return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}
 function daysSinceLastAbout(node){if(!node.about?.length)return null;const latest=node.about.reduce((a,b)=>new Date(a.date)>new Date(b.date)?a:b);return Math.floor((Date.now()-new Date(latest.date))/86400000);}
-function upcomingBirthdays(nodes,withinDays=30){const now=new Date();return nodes.filter(n=>n.type==="person"&&n.birthday).map(n=>{const b=new Date(n.birthday);if(isNaN(b.getTime()))return null;let next=new Date(now.getFullYear(),b.getMonth(),b.getDate());if(next<now)next=new Date(now.getFullYear()+1,b.getMonth(),b.getDate());const daysUntil=Math.round((next-now)/86400000);return daysUntil<=withinDays?{node:n,daysUntil}:null;}).filter(Boolean).sort((a,b)=>a.daysUntil-b.daysUntil);}
 
 function categoryColorFor(cat) {
   if(cat?.color) return cat.color;
@@ -198,8 +197,9 @@ function getNodeRadius(node, centerId, isL2, allLinks) {
 }
 
 // ===== Smart Reminders =====
+function localYMD(d){const z=n=>String(n).padStart(2,"0");return`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;}
 function getReminders(nodes, fieldDefs) {
-  const now = new Date();
+  const t = new Date(); const now = new Date(t.getFullYear(), t.getMonth(), t.getDate()); // today, 00:00 local
   const reminders = [];
   nodes.filter(n=>n.type==="person"&&n.birthday).forEach(n=>{
     const b = new Date(n.birthday); if(isNaN(b.getTime())) return;
@@ -208,7 +208,7 @@ function getReminders(nodes, fieldDefs) {
     const daysUntil = Math.round((next-now)/86400000);
     if(daysUntil<=7) reminders.push({
       id:`bday_${n.id}_${next.getFullYear()}`, personId:n.id, personName:n.name,
-      type:"birthday", emoji:"🎂",
+      type:"birthday", emoji:"🎂", dayOf:localYMD(next),
       label:daysUntil===0?`${n.name.split(" ")[0]}'s birthday is TODAY!`:daysUntil===1?`${n.name.split(" ")[0]}'s birthday is tomorrow`:`${n.name.split(" ")[0]}'s birthday in ${daysUntil} days`,
       daysUntil,
     });
@@ -224,7 +224,7 @@ function getReminders(nodes, fieldDefs) {
         const daysUntil = Math.round((nextOccurrence-now)/86400000);
         if(daysUntil<=3) reminders.push({
           id:`field_${n.id}_${fid}_${nextOccurrence.getFullYear()}`, personId:n.id, personName:n.name,
-          type:"custom", emoji:"📅",
+          type:"custom", emoji:"📅", dayOf:localYMD(nextOccurrence),
           label:daysUntil===0?`${fd.label} for ${n.name.split(" ")[0]} — TODAY`:`${fd.label} for ${n.name.split(" ")[0]} in ${daysUntil} day${daysUntil===1?"":"s"}`,
           daysUntil,
         });
@@ -234,9 +234,11 @@ function getReminders(nodes, fieldDefs) {
   return reminders.sort((a,b)=>a.daysUntil-b.daysUntil);
 }
 function getDismissedReminders(){try{return JSON.parse(localStorage.getItem(LS_DISMISSED_REMINDERS)||"{}");}catch(e){return{};}}
-function dismissReminder(id){try{const d=getDismissedReminders();d[id]=new Date().toISOString().slice(0,10);localStorage.setItem(LS_DISMISSED_REMINDERS,JSON.stringify(d));}catch(e){}}
-function snoozeReminder(id){try{const d=getDismissedReminders();const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);d[id]="snooze_"+tomorrow.toISOString().slice(0,10);localStorage.setItem(LS_DISMISSED_REMINDERS,JSON.stringify(d));}catch(e){}}
-function isReminderActive(reminder){const d=getDismissedReminders();const val=d[reminder.id];if(!val)return true;if(val.startsWith("snooze_")){const until=val.replace("snooze_","");return new Date().toISOString().slice(0,10)>=until;}return val!==new Date().toISOString().slice(0,10);}
+// Dismiss: never show this reminder again (ids include the year, so next year's birthday still shows)
+function dismissReminder(id){try{const d=getDismissedReminders();d[id]="done";localStorage.setItem(LS_DISMISSED_REMINDERS,JSON.stringify(d));}catch(e){}}
+// Remind me on the day: hide until the day itself
+function snoozeReminder(id,dayOf){try{const d=getDismissedReminders();d[id]="snooze_"+dayOf;localStorage.setItem(LS_DISMISSED_REMINDERS,JSON.stringify(d));}catch(e){}}
+function isReminderActive(reminder){const d=getDismissedReminders();const val=d[reminder.id];if(!val)return true;if(val.startsWith("snooze_")){return localYMD(new Date())>=val.replace("snooze_","");}return false;}
 
 // ===== Reminder Banner =====
 function ReminderBanner({reminders,onDismiss,onSnooze,onPersonClick}){
@@ -256,7 +258,7 @@ function ReminderBanner({reminders,onDismiss,onSnooze,onPersonClick}){
         {reminders.length>1&&<button onClick={()=>setIndex(i=>(i+1)%reminders.length)} style={{background:"rgba(255,255,255,0.4)",border:"none",borderRadius:8,padding:"4px 8px",color:P.text,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Next</button>}
       </div>
       <div style={{display:"flex",gap:8,marginTop:10}}>
-        {r.daysUntil>0&&<button onClick={()=>onSnooze(r.id)} style={{flex:1,padding:"7px 0",background:"rgba(255,255,255,0.3)",border:`1px solid rgba(255,255,255,0.4)`,borderRadius:10,color:P.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Remind me day-of</button>}
+        {r.daysUntil>0&&<button onClick={()=>onSnooze(r.id)} style={{flex:1,padding:"7px 0",background:"rgba(255,255,255,0.3)",border:`1px solid rgba(255,255,255,0.4)`,borderRadius:10,color:P.text,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Remind me on the day</button>}
         <button onClick={()=>onDismiss(r.id)} style={{flex:1,padding:"7px 0",background:"rgba(255,255,255,0.5)",border:`1px solid rgba(255,255,255,0.4)`,borderRadius:10,color:P.text,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Dismiss</button>
       </div>
     </div>
@@ -1582,7 +1584,6 @@ function MainApp(){
   const centerNode=nodes.find(n=>n.id===centerId);
   const activePerson=nodes.find(n=>n.id===activeCardId);
   const meNode=nodes.find(n=>n.id==="me");
-  const birthdays=upcomingBirthdays(nodes,30);
   const stats={people:nodes.filter(n=>n.type==="person").length,categories:nodes.filter(n=>n.type==="category").length,connections:links.filter(l=>l.type!=="circle"&&l.type!=="item"&&nodes.find(n=>n.id===l.source)?.type!=="item").length,about:nodes.filter(n=>n.type==="person").reduce((s,n)=>s+(n.about?.length||0),0)};
   const placedSet=placedPeople(nodes,links);
   const uncategorizedPeople=nodes.filter(n=>n.type==="person"&&!placedSet.has(n.id));
@@ -1616,7 +1617,7 @@ function MainApp(){
     if(navStack.length>0){const prev=navStack[navStack.length-1];setNavStack(s=>s.slice(0,-1));setCenterId(prev);}
   }
   function handleDismissReminder(id){dismissReminder(id);setActiveReminders(r=>r.filter(x=>x.id!==id));}
-  function handleSnoozeReminder(id){snoozeReminder(id);setActiveReminders(r=>r.filter(x=>x.id!==id));}
+  function handleSnoozeReminder(id){const r=activeReminders.find(x=>x.id===id);snoozeReminder(id,r?.dayOf||localYMD(new Date()));setActiveReminders(r=>r.filter(x=>x.id!==id));}
 
   async function updatePerson(id,patch){
     if(patch._newConn){setLinks(prev=>[...prev,{source:id,target:patch._newConn.target,type:patch._newConn.type}]);setSaving(true);try{await callBackend("addRelationship",{personA:id,personB:patch._newConn.target,type:patch._newConn.type});}catch(e){console.error(e);}finally{setSaving(false);}return;}
@@ -1885,21 +1886,6 @@ function MainApp(){
       {/* Home bottom bar */}
       {isHome&&!editMode&&(
         <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"14px 20px 40px",background:`linear-gradient(to top, ${P.gradBot} 65%, transparent)`,zIndex:10}}>
-          {/* Birthdays */}
-          {birthdays.length>0&&(
-            <div style={{marginBottom:10,background:`linear-gradient(135deg,#FBD0D020,#D9C3F420)`,borderRadius:14,padding:"10px 14px",border:`1.5px solid ${P.border}`,boxShadow:`0 2px 8px ${P.shadow}`}}>
-              <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.1em",color:P.muted,textTransform:"uppercase",marginBottom:8}}>🎂 Upcoming birthdays</div>
-              {birthdays.map(({node:n,daysUntil})=>(
-                <div key={n.id} onClick={()=>{setActiveCardId(n.id);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",cursor:"pointer",borderBottom:`1px solid ${P.borderSoft}`}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{width:22,height:22,borderRadius:"50%",background:`${personBaseColor(n.id,links,nodes)}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:personBaseColor(n.id,links,nodes)}}>{n.name[0]}</div>
-                    <span style={{fontSize:13,color:P.text}}>{n.name.split(" ")[0]}</span>
-                  </div>
-                  <span style={{fontSize:12,color:P.muted}}>{daysUntil===0?"Today!":daysUntil===1?"Tomorrow":`In ${daysUntil} days`}</span>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* Nudge pill — show first upcoming nudge if no search */}
           {!search&&(()=>{
