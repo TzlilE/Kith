@@ -1582,7 +1582,7 @@ function MainApp(){
     try{
       const data=await callBackend("getAllData");
       const seenNames=new Set();
-      const people=(data.people||[]).map(p=>({...p,type:"person",birthday:toYMD(p.birthday||p.birthDate),about:p.about||[],customValues:p.customValues||{},importantFieldIds:p.importantFieldIds||[],photo:p.imageUrl||null})).filter(p=>{const key=p.name?.trim().toLowerCase();if(!key||seenNames.has(key))return false;seenNames.add(key);return true;});
+      const people=(data.people||[]).map(p=>({...p,categories:(p.categories||[]).filter(c=>c&&c!=="[]"),type:"person",birthday:toYMD(p.birthday||p.birthDate),about:p.about||[],customValues:p.customValues||{},importantFieldIds:p.importantFieldIds||[],photo:p.imageUrl||null})).filter(p=>{const key=p.name?.trim().toLowerCase();if(!key||seenNames.has(key))return false;seenNames.add(key);return true;});
       const savedCatColors=JSON.parse(localStorage.getItem("catColors")||"{}");
       const cats=(data.categories||[]).map(c=>({
         id:c.name,name:c.name,type:"category",
@@ -1756,11 +1756,20 @@ function MainApp(){
   }
 
   async function addPerson(name){
+    const where=addModalCenter;
+    const inCategory=where&&where.type==="category";
+    const inPerson=where&&where.type==="person";
     setSaving(true);
     try{
-      const res=await callBackend("addPerson",{name,categories:[]});const id=res.id;
+      // Save the category with the person (comma text, the format the sheet uses)
+      const res=await callBackend("addPerson",{name,categories:inCategory?where.id:""});const id=res.id;
       setNodes(prev=>[...prev,{id,name,type:"person",birthday:"",about:[],customValues:{},importantFieldIds:[],photo:null}]);
-      if(addModalCenter&&addModalCenter.id!=="me"&&addModalCenter.type==="category"){setLinks(prev=>[...prev,{source:addModalCenter.id,target:id,type:addModalCenter.name.toLowerCase()}]);}
+      if(inCategory){setLinks(prev=>[...prev,{source:where.id,target:id,type:where.name.toLowerCase()}]);}
+      // Added from inside a person: save the connection between them
+      if(inPerson){
+        setLinks(prev=>[...prev,{source:id,target:where.id,type:""}]);
+        await callBackend("addRelationship",{personA:id,personB:where.id,type:""});
+      }
       setNewNodeId(id);setAddModalCenter(null);
       setTimeout(()=>{setActiveCardId(id);},100);setTimeout(()=>setNewNodeId(null),2000);
     }catch(e){console.error(e);}finally{setSaving(false);}
