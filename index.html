@@ -756,21 +756,21 @@ function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpd
         </div>
         <div style={{flex:1,minWidth:0}}>
           {editing?<input value={draft.name} onChange={e=>setDraft(d=>({...d,name:e.target.value}))} style={{...inp,fontSize:17,fontWeight:700,background:"transparent",border:"none",borderBottom:`1.5px solid ${P.border}`,borderRadius:0,padding:"4px 0"}}/>:<div style={{fontSize:18,fontWeight:700,color:P.text}}>{person.name}</div>}
-          {!editing&&(personCats.length>0||workCompany||workTitle||livesText)&&(
-            <div style={{display:"flex",gap:4,flexWrap:"nowrap",alignItems:"flex-start",marginTop:4,minWidth:0}}>
-              {personCats.map(cat=>(
-                <span key={cat.id} style={{flexShrink:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontSize:11,padding:"2px 8px",borderRadius:20,background:`${categoryColorFor(cat)}25`,border:`1px solid ${categoryColorFor(cat)}50`,color:P.text,fontWeight:600}}>{cat.name}</span>
-              ))}
-              {(workCompany||workTitle)&&<span style={{display:"inline-flex",flexDirection:"column",minWidth:0,flexShrink:1,fontSize:11,padding:"2px 8px",borderRadius:10,background:P.inputBg,border:`1px solid ${P.border}`,color:P.text,fontWeight:500,lineHeight:1.35}}>
-                <span dir="auto" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>💼 {workCompany||workTitle}</span>
-                {workCompany&&workTitle&&<span dir="auto" style={{fontSize:10,color:P.muted,fontWeight:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{workTitle}</span>}
-              </span>}
-              {livesText&&<span dir="auto" style={{flexShrink:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontSize:11,padding:"2px 8px",borderRadius:20,background:P.inputBg,border:`1px solid ${P.border}`,color:P.text,fontWeight:500}}>📍 {livesText}</span>}
-            </div>
-          )}
         </div>
         <button onClick={editing?saveEdit:startEdit} style={{...pbtn(editing?"primary":"secondary"),flexShrink:0,padding:"7px 14px"}}>{editing?"Done":"Edit"}</button>
       </div>
+        {!editing&&(personCats.length>0||workCompany||workTitle||livesText)&&(
+          <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"flex-start",margin:"-6px 0 14px"}}>
+            {personCats.map(cat=>(
+              <span key={cat.id} style={{flexShrink:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontSize:11,padding:"2px 8px",borderRadius:20,background:`${categoryColorFor(cat)}25`,border:`1px solid ${categoryColorFor(cat)}50`,color:P.text,fontWeight:600}}>{cat.name}</span>
+            ))}
+            {(workCompany||workTitle)&&<span style={{display:"inline-flex",flexDirection:"column",flexShrink:0,maxWidth:"100%",fontSize:11,padding:"2px 8px",borderRadius:10,background:P.inputBg,border:`1px solid ${P.border}`,color:P.text,fontWeight:500,lineHeight:1.35}}>
+              <span dir="auto" style={{whiteSpace:"nowrap"}}>💼 {workCompany||workTitle}</span>
+              {workCompany&&workTitle&&<span dir="auto" style={{fontSize:10,color:P.muted,fontWeight:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:220}}>{workTitle}</span>}
+            </span>}
+            {livesText&&<span dir="auto" style={{flexShrink:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontSize:11,padding:"2px 8px",borderRadius:20,background:P.inputBg,border:`1px solid ${P.border}`,color:P.text,fontWeight:500}}>📍 {livesText}</span>}
+          </div>
+        )}
       {!editing&&(<>
         {importantF.length>0&&<div style={{background:`${pColor}12`,border:`1.5px solid ${pColor}25`,borderRadius:14,padding:"10px 14px",marginBottom:12}}><div style={{...secLabel,marginTop:0,color:pColor}}>Important</div>{importantF.map(f=><div key={f.id} style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}><span style={{fontSize:14,color:P.text}}>{person.customValues[f.id]}</span><span style={{fontSize:12,color:P.muted}}>{f.label}</span></div>)}</div>}
         {person.birthday&&<div style={FBOX}><div style={{...fRow,borderBottom:"none"}}><span style={{fontSize:14,color:P.text}}>{formatDate(person.birthday)} · age {calcAge(person.birthday)}</span><span style={{fontSize:12,color:P.muted}}>Birthday</span></div></div>}
