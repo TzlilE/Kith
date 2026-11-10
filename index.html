@@ -723,7 +723,7 @@ function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpd
   const qd=quickDefs(fieldDefs);
   const quickIds=new Set(Object.values(qd).filter(Boolean).map(f=>f.id));
   const qv=k=>qd[k]?String(person.customValues?.[qd[k].id]||"").trim():"";
-  const workText=[qv("company"),qv("title")].filter(Boolean).join(" · ");
+  const workCompany=qv("company"),workTitle=qv("title");
   const livesText=qv("lives");
   const personCF=fieldDefs.filter(f=>person.customValues?.[f.id]&&!quickIds.has(f.id));
   const importantF=fieldDefs.filter(f=>(person.importantFieldIds||[]).includes(f.id)&&person.customValues?.[f.id]);
@@ -754,15 +754,18 @@ function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpd
         <div style={{width:52,height:52,borderRadius:"50%",background:`${pColor}20`,border:`2px solid ${pColor}50`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:700,color:pColor,flexShrink:0}}>
           {person.photo?<img src={person.photo} style={{width:52,height:52,borderRadius:"50%",objectFit:"cover"}} alt=""/>:(editing?draft.name[0]:person.name[0])||"?"}
         </div>
-        <div style={{flex:1}}>
+        <div style={{flex:1,minWidth:0}}>
           {editing?<input value={draft.name} onChange={e=>setDraft(d=>({...d,name:e.target.value}))} style={{...inp,fontSize:17,fontWeight:700,background:"transparent",border:"none",borderBottom:`1.5px solid ${P.border}`,borderRadius:0,padding:"4px 0"}}/>:<div style={{fontSize:18,fontWeight:700,color:P.text}}>{person.name}</div>}
-          {!editing&&(personCats.length>0||workText||livesText)&&(
-            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
+          {!editing&&(personCats.length>0||workCompany||workTitle||livesText)&&(
+            <div style={{display:"flex",gap:4,flexWrap:"nowrap",alignItems:"flex-start",marginTop:4,minWidth:0}}>
               {personCats.map(cat=>(
-                <span key={cat.id} style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:`${categoryColorFor(cat)}25`,border:`1px solid ${categoryColorFor(cat)}50`,color:P.text,fontWeight:600}}>{cat.name}</span>
+                <span key={cat.id} style={{flexShrink:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontSize:11,padding:"2px 8px",borderRadius:20,background:`${categoryColorFor(cat)}25`,border:`1px solid ${categoryColorFor(cat)}50`,color:P.text,fontWeight:600}}>{cat.name}</span>
               ))}
-              {workText&&<span dir="auto" style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:P.inputBg,border:`1px solid ${P.border}`,color:P.text,fontWeight:500}}>💼 {workText}</span>}
-              {livesText&&<span dir="auto" style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:P.inputBg,border:`1px solid ${P.border}`,color:P.text,fontWeight:500}}>📍 {livesText}</span>}
+              {(workCompany||workTitle)&&<span style={{display:"inline-flex",flexDirection:"column",minWidth:0,flexShrink:1,fontSize:11,padding:"2px 8px",borderRadius:10,background:P.inputBg,border:`1px solid ${P.border}`,color:P.text,fontWeight:500,lineHeight:1.35}}>
+                <span dir="auto" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>💼 {workCompany||workTitle}</span>
+                {workCompany&&workTitle&&<span dir="auto" style={{fontSize:10,color:P.muted,fontWeight:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{workTitle}</span>}
+              </span>}
+              {livesText&&<span dir="auto" style={{flexShrink:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontSize:11,padding:"2px 8px",borderRadius:20,background:P.inputBg,border:`1px solid ${P.border}`,color:P.text,fontWeight:500}}>📍 {livesText}</span>}
             </div>
           )}
         </div>
