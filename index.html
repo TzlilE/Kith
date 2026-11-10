@@ -720,11 +720,26 @@ function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpd
   const aboutSorted=[...(person.about||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const conns=allLinks.filter(l=>l.source===person.id||l.target===person.id).map(l=>{const oid=l.source===person.id?l.target:l.source;return{node:allNodes.find(n=>n.id===oid),type:l.type};}).filter(c=>c.node&&c.node.id!=="me"&&c.node.type==="person");
   const linkedItems=allLinks.filter(l=>(l.source===person.id||l.target===person.id)&&l.type!=="item").map(l=>allNodes.find(n=>n.id===(l.source===person.id?l.target:l.source))).filter(n=>n&&n.type==="item");
-  const personCF=fieldDefs.filter(f=>person.customValues?.[f.id]);
+  const qd=quickDefs(fieldDefs);
+  const quickIds=new Set(Object.values(qd).filter(Boolean).map(f=>f.id));
+  const qv=k=>qd[k]?String(person.customValues?.[qd[k].id]||"").trim():"";
+  const workText=[qv("company"),qv("title")].filter(Boolean).join(" · ");
+  const livesText=qv("lives");
+  const personCF=fieldDefs.filter(f=>person.customValues?.[f.id]&&!quickIds.has(f.id));
   const importantF=fieldDefs.filter(f=>(person.importantFieldIds||[]).includes(f.id)&&person.customValues?.[f.id]);
   const connMatches=connName.trim()&&!connMatchId?allNodes.filter(n=>n.type==="person"&&n.id!==person.id&&n.name.toLowerCase().includes(connName.toLowerCase())):[];
-  function startEdit(){setDraft({name:person.name,birthday:person.birthday||"",about:[...(person.about||[])],customValues:{...(person.customValues||{})},importantFieldIds:[...(person.importantFieldIds||[])]});setEditing(true);}
-  function saveEdit(){onUpdate(person.id,draft);setEditing(false);setDraft(null);setShowAddAbout(false);setShowAddField(false);}
+  function startEdit(){setDraft({name:person.name,birthday:person.birthday||"",about:[...(person.about||[])],customValues:{...(person.customValues||{})},importantFieldIds:[...(person.importantFieldIds||[])],quick:{company:qv("company"),title:qv("title"),lives:qv("lives")}});setEditing(true);}
+  function saveEdit(){
+    // Work / Lives in: reuse the existing field, or create it the first time
+    const cv={...draft.customValues};
+    QUICK_FIELDS.forEach(q=>{
+      const val=(draft.quick?.[q.key]||"").trim();let def=qd[q.key];
+      if(!def&&!val)return;
+      if(!def){def={id:"f"+Date.now()+q.key,label:q.label,type:"text"};onAddFieldDef(def);}
+      cv[def.id]=val;
+    });
+    const{quick,...rest}=draft;
+    onUpdate(person.id,{...rest,customValues:cv});setEditing(false);setDraft(null);setShowAddAbout(false);setShowAddField(false);}
   function addAbout(){if(!newAboutText.trim())return;const date=newAboutDate||new Date().toISOString().slice(0,10);setDraft(d=>({...d,about:[...d.about,{date,text:newAboutText.trim()}]}));setNewAboutDate("");setNewAboutText("");setShowAddAbout(false);}
   function toggleImportant(fid){setDraft(d=>{const ids=d.importantFieldIds||[];return{...d,importantFieldIds:ids.includes(fid)?ids.filter(x=>x!==fid):[...ids,fid]};});}
   function addCF(){if(!newFieldLabel.trim())return;const id="f"+Date.now();onAddFieldDef({id,label:newFieldLabel.trim(),type:"text"});setDraft(d=>({...d,customValues:{...d.customValues,[id]:newFieldValue.trim()}}));setNewFieldLabel("");setNewFieldValue("");setShowAddField(false);}
@@ -741,11 +756,13 @@ function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpd
         </div>
         <div style={{flex:1}}>
           {editing?<input value={draft.name} onChange={e=>setDraft(d=>({...d,name:e.target.value}))} style={{...inp,fontSize:17,fontWeight:700,background:"transparent",border:"none",borderBottom:`1.5px solid ${P.border}`,borderRadius:0,padding:"4px 0"}}/>:<div style={{fontSize:18,fontWeight:700,color:P.text}}>{person.name}</div>}
-          {!editing&&personCats.length>0&&(
+          {!editing&&(personCats.length>0||workText||livesText)&&(
             <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
               {personCats.map(cat=>(
                 <span key={cat.id} style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:`${categoryColorFor(cat)}25`,border:`1px solid ${categoryColorFor(cat)}50`,color:P.text,fontWeight:600}}>{cat.name}</span>
               ))}
+              {workText&&<span dir="auto" style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:P.inputBg,border:`1px solid ${P.border}`,color:P.text,fontWeight:500}}>💼 {workText}</span>}
+              {livesText&&<span dir="auto" style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:P.inputBg,border:`1px solid ${P.border}`,color:P.text,fontWeight:500}}>📍 {livesText}</span>}
             </div>
           )}
         </div>
@@ -802,7 +819,15 @@ function PersonCard({person,allNodes,allLinks,fieldDefs,onClose,onNavigate,onUpd
           );
         })()}
         <div style={{marginBottom:12}}><div style={{fontSize:11,color:P.muted,marginBottom:4}}>Birthday</div><input type="date" value={draft.birthday} onChange={e=>setDraft(d=>({...d,birthday:e.target.value}))} style={inp}/></div>
-        {fieldDefs.filter(f=>draft.customValues[f.id]).length>0&&<div style={{marginBottom:12}}><div style={secLabel}>Details</div>{fieldDefs.filter(f=>draft.customValues[f.id]).map(f=><div key={f.id} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={{fontSize:11,color:P.muted}}>{f.label}</span><button onClick={()=>toggleImportant(f.id)} style={{border:"none",background:"none",cursor:"pointer",fontSize:11,color:(draft.importantFieldIds||[]).includes(f.id)?pColor:P.dim,fontFamily:"inherit"}}>{(draft.importantFieldIds||[]).includes(f.id)?"★ important":"☆ mark important"}</button></div><div style={{display:"flex",gap:6}}><input value={draft.customValues[f.id]||""} onChange={e=>setDraft(d=>({...d,customValues:{...d.customValues,[f.id]:e.target.value}}))} style={{...inp,flex:1}}/><button onClick={()=>setDraft(d=>{const cv={...d.customValues};delete cv[f.id];return{...d,customValues:cv,importantFieldIds:(d.importantFieldIds||[]).filter(x=>x!==f.id)};})} style={{...pbtn("danger"),padding:"10px 12px"}}>×</button></div></div>)}</div>}
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:P.muted,marginBottom:4}}>💼 Work</div>
+          <div style={{display:"flex",gap:8}}>
+            <input value={draft.quick?.company||""} onChange={e=>setDraft(d=>({...d,quick:{...d.quick,company:e.target.value}}))} placeholder="Company" dir="auto" style={{...inp,flex:1,minWidth:0}}/>
+            <input value={draft.quick?.title||""} onChange={e=>setDraft(d=>({...d,quick:{...d.quick,title:e.target.value}}))} placeholder="Title (optional)" dir="auto" style={{...inp,flex:1,minWidth:0}}/>
+          </div>
+        </div>
+        <div style={{marginBottom:12}}><div style={{fontSize:11,color:P.muted,marginBottom:4}}>📍 Lives in</div><input value={draft.quick?.lives||""} onChange={e=>setDraft(d=>({...d,quick:{...d.quick,lives:e.target.value}}))} placeholder="Tel Aviv" dir="auto" style={inp}/></div>
+        {fieldDefs.filter(f=>draft.customValues[f.id]&&!quickIds.has(f.id)).length>0&&<div style={{marginBottom:12}}><div style={secLabel}>Details</div>{fieldDefs.filter(f=>draft.customValues[f.id]&&!quickIds.has(f.id)).map(f=><div key={f.id} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={{fontSize:11,color:P.muted}}>{f.label}</span><button onClick={()=>toggleImportant(f.id)} style={{border:"none",background:"none",cursor:"pointer",fontSize:11,color:(draft.importantFieldIds||[]).includes(f.id)?pColor:P.dim,fontFamily:"inherit"}}>{(draft.importantFieldIds||[]).includes(f.id)?"★ important":"☆ mark important"}</button></div><div style={{display:"flex",gap:6}}><input value={draft.customValues[f.id]||""} onChange={e=>setDraft(d=>({...d,customValues:{...d.customValues,[f.id]:e.target.value}}))} style={{...inp,flex:1}}/><button onClick={()=>setDraft(d=>{const cv={...d.customValues};delete cv[f.id];return{...d,customValues:cv,importantFieldIds:(d.importantFieldIds||[]).filter(x=>x!==f.id)};})} style={{...pbtn("danger"),padding:"10px 12px"}}>×</button></div></div>)}</div>}
         {!showAddField?<button onClick={()=>setShowAddField(true)} style={{...dashedBtn,marginBottom:12}}>+ Add detail</button>:<div style={{marginBottom:12,display:"flex",flexDirection:"column",gap:8}}><input value={newFieldLabel} onChange={e=>setNewFieldLabel(e.target.value)} placeholder="Field name" autoFocus style={inp}/><input value={newFieldValue} onChange={e=>setNewFieldValue(e.target.value)} placeholder="Value" style={inp}/><div style={{display:"flex",gap:8}}><button onClick={addCF} style={{...pbtn("primary"),flex:1}}>Save</button><button onClick={()=>setShowAddField(false)} style={{...pbtn("secondary"),flex:1}}>Cancel</button></div></div>}
         <div style={secLabel}>About</div>
         {[...draft.about].sort((a,b)=>new Date(b.date)-new Date(a.date)).map((e,i)=><div key={i} style={{display:"flex",gap:10,paddingBottom:10,alignItems:"flex-start"}}><div style={{width:7,height:7,borderRadius:"50%",background:pColor,marginTop:5,flexShrink:0}}/><div style={{flex:1}}><div style={{fontSize:11,color:P.muted,marginBottom:2}}>{formatDate(e.date)}</div><div style={{fontSize:14,color:P.text}}>{e.text}</div></div><button onClick={()=>setDraft(d=>({...d,about:d.about.filter(x=>x!==e)}))} style={{background:"none",border:"none",color:P.muted,fontSize:16,cursor:"pointer",padding:"0 4px"}}>×</button></div>)}
@@ -1198,6 +1223,15 @@ function AIChatModal({allNodes, onSave, onCancel}) {
     </div>
   );
 }
+
+// ===== Work / Lives in: shown as small boxes under the person's name =====
+// Matches fields you already created with these names, in English or Hebrew
+const QUICK_FIELDS=[
+  {key:"company",label:"Company",rx:/^(company|work|job|employer|workplace|עבודה|חברה|מקום עבודה)$/i},
+  {key:"title",label:"Title",rx:/^(title|role|position|job title|תפקיד)$/i},
+  {key:"lives",label:"Lives in",rx:/^(lives in|lives|city|location|address|home|גר ב|גרה ב|מגורים|עיר|כתובת)$/i},
+];
+function quickDefs(fieldDefs){const o={};QUICK_FIELDS.forEach(q=>{o[q.key]=fieldDefs.find(f=>q.rx.test(String(f.label||"").trim()))||null;});return o;}
 
 // ===== Collections (Books / Places / Recipes) =====
 const COLLECTIONS_ROOT = {id:"collections",name:"Collections",type:"collection",color:"#BD9CE2",icon:"✦"};
